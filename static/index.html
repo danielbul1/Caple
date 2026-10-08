@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ES נרות שעה</title>
+<style>
+  :root { --fg:#1d1d1f; --muted:#c4c4c8; --line:#e5e5ea; --accent:#2563eb; --bg:#fff; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color:var(--fg); background:var(--bg); }
+  main { max-width: 900px; margin: 0 auto; padding: 24px 16px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color:#6e6e73; margin: 0 0 20px; font-size: 14px; }
+  .cal { width: 300px; border:1px solid var(--line); border-radius: 12px; padding: 12px; direction: ltr; }
+  .cal-head { display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px; }
+  .cal-head button { border:0; background:none; font-size:18px; cursor:pointer; padding:4px 10px; }
+  .cal-title { font-weight:600; }
+  .grid { display:grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align:center; }
+  .dow { font-size: 12px; color:#6e6e73; padding: 4px 0; }
+  .day { height: 36px; border-radius: 50%; border:1px solid transparent; background:none; font-size:14px; color:var(--muted); cursor:default; }
+  .day.on { color:var(--fg); cursor:pointer; }
+  .day.on:hover { background:#f2f2f7; }
+  .day.today { border-color: var(--fg); }
+  .day.sel, .day.sel:hover { background: var(--accent); color:#fff; border-color: var(--accent); }
+  .status { margin: 16px 0; font-size: 14px; }
+  .summary { display:flex; flex-wrap:wrap; gap: 8px 24px; font-size:14px; margin-bottom: 12px; }
+  .summary b { font-variant-numeric: tabular-nums; }
+  a.btn { display:inline-block; padding:8px 14px; background:var(--accent); color:#fff; border-radius:8px; text-decoration:none; font-size:14px; }
+  .table-wrap { max-height: 60vh; overflow:auto; border:1px solid var(--line); border-radius: 8px; margin-top: 12px; direction: ltr; }
+  table { border-collapse: collapse; width:100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+  th, td { padding: 6px 10px; text-align:right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th:first-child, td:first-child { text-align:left; }
+  th { position: sticky; top: 0; background: #f9f9fb; }
+  .err { color: #c0392b; }
+</style>
+</head>
+<body>
+<main>
+  <h1>ES=F · נרות שעה</h1>
+  <p class="sub">בחר תאריך ותקבל את כל נרות השעה שנסגרו לפניו, שנתיים אחורה. רק תאריכים שיש להם היסטוריה מלאה ב-Yahoo פתוחים לבחירה.</p>
+
+  <div class="cal">
+    <div class="cal-head">
+      <button id="prev" aria-label="previous month">‹</button>
+      <span class="cal-title" id="title"></span>
+      <button id="next" aria-label="next month">›</button>
+    </div>
+    <div class="grid" id="grid"></div>
+  </div>
+
+  <div class="status" id="status">טוען תאריכים זמינים…</div>
+  <div id="result"></div>
+</main>
+
+<script>
+const DOW = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+let available = new Set(), today = null, view = null, selected = null;
+
+const iso = (y, m, d) => `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+const fmt = n => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+
+function render() {
+  const [y, m] = view;
+  document.getElementById("title").textContent = `${MONTHS[m]} ${y}`;
+  const grid = document.getElementById("grid");
+  grid.innerHTML = DOW.map(d => `<div class="dow">${d}</div>`).join("");
+  const first = new Date(y, m, 1).getDay();
+  const days = new Date(y, m + 1, 0).getDate();
+  for (let i = 0; i < first; i++) grid.insertAdjacentHTML("beforeend", "<div></div>");
+  for (let d = 1; d <= days; d++) {
+    const key = iso(y, m, d);
+    const btn = document.createElement("button");
+    btn.className = "day";
+    btn.textContent = d;
+    if (available.has(key)) { btn.classList.add("on"); btn.onclick = () => pick(key); }
+    else btn.disabled = true;
+    if (key === today) btn.classList.add("today");
+    if (key === selected) btn.classList.add("sel");
+    grid.appendChild(btn);
+  }
+}
+
+function shift(delta) {
+  let [y, m] = view; m += delta;
+  if (m < 0) { m = 11; y--; } if (m > 11) { m = 0; y++; }
+  view = [y, m]; render();
+}
+
+async function pick(key) {
+  selected = key; render();
+  const status = document.getElementById("status"), result = document.getElementById("result");
+  status.textContent = `מושך נתונים עבור ${key}…`;
+  result.innerHTML = "";
+  try {
+    const res = await fetch(`/api/candles?date=${key}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    status.textContent = "";
+    const rows = data.candles.slice().reverse().map(c =>
+      `<tr><td>${c.time}</td><td>${fmt(c.open)}</td><td>${fmt(c.high)}</td><td>${fmt(c.low)}</td><td>${fmt(c.close)}</td><td>${c.volume.toLocaleString("en-US")}</td></tr>`
+    ).join("");
+    result.innerHTML = `
+      <div class="summary">
+        <span>תאריך נבחר: <b>${data.date}</b></span>
+        <span>נר ראשון: <b>${data.first}</b></span>
+        <span>נר אחרון: <b>${data.last}</b></span>
+        <span>מספר נרות: <b>${data.count.toLocaleString("en-US")}</b></span>
+      </div>
+      <a class="btn" href="/api/candles?date=${key}&format=csv">הורד CSV</a>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Time (NY)</th><th>Open</th><th>High</th><th>Low</th><th>Close</th><th>Volume</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>`;
+  } catch (e) {
+    status.innerHTML = `<span class="err">שגיאה: ${e.message}</span>`;
+  }
+}
+
+async function init() {
+  document.getElementById("prev").onclick = () => shift(-1);
+  document.getElementById("next").onclick = () => shift(1);
+  const status = document.getElementById("status");
+  try {
+    const data = await (await fetch("/api/available-dates")).json();
+    available = new Set(data.available);
+    today = data.today;
+    const [y, m] = today.split("-").map(Number);
+    view = [y, m - 1];
+    status.textContent = available.size ? "בחר תאריך מסומן." : "אין כרגע תאריך עם שנתיים מלאות.";
+  } catch (e) {
+    const now = new Date(); view = [now.getFullYear(), now.getMonth()];
+    status.innerHTML = `<span class="err">לא הצלחתי לטעון תאריכים: ${e.message}</span>`;
+  }
+  render();
+}
+init();
+</script>
+</body>
+</html>
