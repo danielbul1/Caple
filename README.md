@@ -181,6 +181,41 @@ No single level is "touch once and it's the HOD": walk-forward (`python levels.p
 `*_past_line`) on days price reached the median level, it went on another ~25-38 points on
 average before 9:00 and ~17-24 after 12:00.
 
+## Legs: is the running move over?
+
+```bash
+python legs.py                  # today's legs so far and the odds the running one is over
+python legs.py 2026-10-09
+python legs.py backtest [LEG]   # walk-forward, LEG = leg size in expected day ranges (default 0.25)
+```
+
+The HOD/LOD question asked about any move instead of the day: on LSE's 5m bars (since 2016,
+`lse_ES.F_5m.csv`) a leg is a move of at least a quarter of the day's expected range (levels.py's
+HAR yardstick, median 11.5 points) without a pullback that big (a zigzag). The turn is only
+confirmed a whole leg late, so after every 5m bar the question is whether the extreme so far is
+already the end. A driftless random walk answers it with the share of a leg already given back
+(gambler's ruin); a logistic regression adds the leg's length so far, bars since the extreme and
+the hour, refit every January on earlier years. Trading it: sell an up leg (buy a down leg) when
+the odds pass a cutoff, stop a tick past the extreme, ride the new leg until its own end is called
+(flip) or the zigzag turns it, flat by midnight, 0.5 points cost per round trip.
+
+Walk-forward, 2,326 days (2017-2026):
+
+| leg size | "over?" log loss, model vs random walk, 2017-21 / 2022-26 | trades at cutoff 0.8, pts/trade 2017-21 / 2022-26 |
+|---|---|---|
+| 0.15 x range (6.9 pts) | -0.5% (t -4.5) / -0.0% (t -0.5) | -0.67 (t -9.3) / -0.52 (t -4.4) |
+| 0.25 x range (11.5 pts) | +0.2% (t +2.2) / +0.1% (t +1.7) | -0.56 (t -3.9) / -0.34 (t -1.4) |
+| 0.5 x range (23.1 pts) | +0.7% (t +2.5) / +0.2% (t +1.7) | -1.07 (t -3.2) / +0.56 (t +1.0) |
+
+The odds are calibrated (said 0.65 -> was 0.66) but they are the random walk's: once the
+pullback is known, the leg's length, its age and the hour add nothing, and every cutoff loses
+about the cost per trade (gross ~0) for the model and the plain pullback rule alike (the one
+positive cell, 23-point legs on 2022-26, lost on 2017-21 and the pullback rule matches it). So the turn
+of a leg can't be told at the moment it happens from price alone, the same as the day's
+direction (bias.py, forecast_bias.py). A first version restarted the zigzag every midnight and
+dropped the day's unfinished last leg; that told the model, through the hour, which legs end
+before midnight, and showed a false -4% edge (t -11).
+
 ## QuantiStat charts
 
 The charts and backtest use LSE's 10 years of ES.F 1h bars.

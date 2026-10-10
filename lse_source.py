@@ -73,15 +73,15 @@ def read_cache(path: Path) -> pd.DataFrame:
     return df
 
 
-def fetch(symbol: str = "ES.F", start: str = "2016-01-01") -> pd.DataFrame:
-    """All 1h bars since start, cached locally; later calls only download what is new."""
-    cache = Path(f"lse_{symbol}_1h.csv")
+def fetch(symbol: str = "ES.F", start: str = "2016-01-01", timeframe: str = "1h") -> pd.DataFrame:
+    """All bars since start, cached locally; later calls only download what is new."""
+    cache = Path(f"lse_{symbol}_{timeframe}.csv")
     old = read_cache(cache) if cache.exists() else None
     if old is not None:
         start = old.index[-1].tz_convert("UTC").strftime("%Y-%m-%dT%H:%M:%S")
     rows = []
     while True:
-        page = get("/candles", {"symbol": symbol, "timeframe": "1h", "start": start, "limit": PAGE, "order": "asc"})
+        page = get("/candles", {"symbol": symbol, "timeframe": timeframe, "start": start, "limit": PAGE, "order": "asc"})
         rows += page
         if len(page) < PAGE:
             break
