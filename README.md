@@ -44,6 +44,18 @@ On 10 years walk-forward both are calibrated (e.g. at
 the miss of the median shrinks from ~18-20 points at the open to ~10-12 at 9:00
 and ~6 at 12:00.
 
+## Live HOD/LOD line
+
+The top of the page (`GET /api/lines?date=YYYY-MM-DD`, default the latest day) draws one
+line for the HOD and one for the LOD: the median final high/low of similar past days,
+recomputed before the open and after every hourly candle (the forming candle counts, data
+refreshes every 2 minutes, the page every minute). Once most similar days had their high
+(low) in, the line sits on the high (low) so far: "this is probably the HOD".
+A line away from price is a best guess, not a turning point: walk-forward
+(`python levels.py backtest`, `*_past_line`) on days price reached it, it went on another
+~25-38 points on average before 9:00 and ~17-24 after 12:00. The signal is the line
+dropping onto the price, with the chance the HOD/LOD is already in next to it.
+
 ## QuantiStat charts
 
 With a free London Strategic Edge key in `LSE_API_KEY`

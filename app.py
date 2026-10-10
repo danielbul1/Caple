@@ -11,6 +11,8 @@ yesterday) can be picked.
 
 from datetime import date, datetime, time, timedelta, timezone
 from io import StringIO
+from math import isnan
+from time import monotonic
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -28,6 +30,8 @@ MARKET_TZ = ZoneInfo("America/New_York")
 
 app = Flask(__name__, static_folder="static")
 _cache: dict[date, pd.DataFrame] = {}
+LIVE_TTL = 120
+_live: tuple[float, pd.DataFrame] | None = None
 
 
 def today_market() -> date:
@@ -51,7 +55,24 @@ def is_available(picked: date) -> bool:
 def fetch_candles(picked: date) -> pd.DataFrame:
     if picked in _cache:
         return _cache[picked]
-    start, end = window_for(picked)
+    _cache[picked] = download(*window_for(picked))
+    return _cache[picked]
+
+
+def live_candles() -> tuple[pd.DataFrame, pd.Series]:
+    """The last ~2 years of 1h candles up to now (the current hour still forming) and VIX1D's
+    daily closes, refreshed at most every LIVE_TTL seconds."""
+    from levels import vix1d_closes  # levels imports this module
+
+    global _live
+    if _live is None or monotonic() - _live[0] > LIVE_TTL:
+        today = today_market()
+        candles = download(today - timedelta(days=LOOKBACK_DAYS - 1), today + timedelta(days=1))
+        _live = (monotonic(), candles, vix1d_closes())
+    return _live[1], _live[2]
+
+
+def download(start: date, end: date) -> pd.DataFrame:
     df = yf.download(
         SYMBOL,
         start=start.isoformat(),
@@ -66,7 +87,6 @@ def fetch_candles(picked: date) -> pd.DataFrame:
     df = df[["Open", "High", "Low", "Close", "Volume"]]
     df.index = df.index.tz_convert(MARKET_TZ)
     df.index.name = "Datetime"
-    _cache[picked] = df
     return df
 
 
@@ -139,6 +159,44 @@ def candles():
             "last": rows[-1]["time"],
             "count": len(rows),
             "candles": rows,
+        }
+    )
+
+
+@app.get("/api/lines")
+def lines():
+    """The HOD/LOD line of a day (default: the latest), as forecast before the open and after
+    each hourly candle so far; the page redraws it live."""
+    from levels import day_lines, today_scale, use_vix1d  # levels imports this module
+    from quantistat import daily_stats
+
+    try:
+        candles, closes = live_candles()
+    except Exception as exc:  # network errors, Yahoo refusals
+        return jsonify({"error": str(exc)}), 502
+    target = parse_date(request.args.get("date")) or candles.index[-1].date()
+    day = candles[candles.index.date == target]
+    if len(day) == 0 or day.index[0].hour != 0:
+        return jsonify({"error": f"No 00:00 candle for {target}"}), 404
+    stats = daily_stats(candles)
+    yardstick, closes = use_vix1d(stats, closes=closes)
+    rows = day_lines(candles, stats, target, today_scale(stats, yardstick, closes, target, day.Open.iloc[0]))
+    num = lambda x: None if isnan(x) else round(float(x), 2)
+    return jsonify(
+        {
+            "date": target.isoformat(),
+            "live": target == today_market(),
+            "yardstick": yardstick,
+            "candles": [
+                {"hour": ts.hour, "open": float(r.Open), "high": float(r.High), "low": float(r.Low), "close": float(r.Close)}
+                for ts, r in day.iterrows()
+            ],
+            "lines": [
+                {"hour": None if r["hour"] is None else int(r["hour"]), "n": r["n"],
+                 "high": float(r["high"]), "low": float(r["low"]),
+                 **{f"{side.lower()}_{k}": num(r[side][k]) for side in ("HOD", "LOD") for k in ("line", "done")}}
+                for r in rows
+            ],
         }
     )
 

@@ -75,3 +75,28 @@ def test_vix1d_move_uses_the_last_close_before_the_day():
     assert levels.vix1d_move(closes, date(2026, 11, 10), 5000.0) == 0.2 * 5000.0 / np.sqrt(252)
     assert levels.vix1d_move(closes, date(2026, 11, 9), 5000.0) == 0.1 * 5000.0 / np.sqrt(252)  # Friday's, over the weekend
     assert np.isnan(levels.vix1d_move(closes, date(2026, 11, 6), 5000.0))   # nothing known yet
+
+
+def test_forecast_line_is_the_median_final_hod_and_lod():
+    # Half the days the HOD was already in: the best single guess for the HOD is between "in" and +1 range.
+    ex = pd.DataFrame({"up": [0.0, 0.0, 1.0, 2.0], "down": [0.0, 1.0, 1.0, 1.0]})
+    f = levels.forecast(ex, high_so_far=200.0, low_so_far=190.0, today_range=10.0)
+    assert f["HOD"]["line"] == 205.0 and f["LOD"]["line"] == 180.0
+    # Most days already done: the line sits on the high so far ("this is probably the HOD").
+    f = levels.forecast(ex.assign(up=[0.0, 0.0, 0.0, 2.0]), 200.0, 190.0, 10.0)
+    assert f["HOD"]["line"] == 200.0
+
+
+def test_day_lines_forecast_each_hour_from_earlier_days_only():
+    rows = []
+    for d, up in [("2026-11-09", 10), ("2026-11-10", 20), ("2026-11-11", 0)]:  # 11-11 is the target
+        rows += [(f"{d} 00:00", 100, 101, 99, 100), (f"{d} 01:00", 100, 100 + up, 99, 100 + up)]
+    rows.append(("2026-11-12 00:00", 100, 999, 1, 100))  # a later day must not leak in
+    c = candles(rows)
+    stats = pd.DataFrame({"open": 100.0, "high": [110.0, 120.0, 101.0, 999.0], "low": 99.0, "r5": 10.0},
+                         index=[date(2026, 11, d) for d in (9, 10, 11, 12)])
+    out = levels.day_lines(c, stats, date(2026, 11, 11), today_range=10.0)
+    assert [r["hour"] for r in out] == [None, 0, 1]
+    # Before the open: past HODs were +1 and +2 ranges above the open -> median +1.5 -> 115.
+    assert out[0]["HOD"]["line"] == 115.0 and out[0]["n"] == 2
+    assert out[2]["high"] == 101 and out[2]["low"] == 99

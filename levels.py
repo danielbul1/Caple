@@ -78,9 +78,30 @@ def odds(extra: np.ndarray, now: float, sign: int, today_range: float) -> tuple[
 
 
 def forecast(ex: pd.DataFrame, high_so_far: float, low_so_far: float, today_range: float) -> dict:
+    """Per side: done, levels, and line = the median final HOD/LOD over all similar days (the
+    best single guess; it sits on the high/low so far once most similar days were done)."""
     ex = ex.dropna()
-    return {side: dict(zip(["done", "levels"], odds(ex[col].to_numpy(), now, sign, today_range)))
+    return {side: dict(zip(["done", "levels"], odds(ex[col].to_numpy(), now, sign, today_range)),
+                       line=now + sign * np.median(ex[col]) * today_range)
             for side, col, now, sign in [("HOD", "up", high_so_far, 1), ("LOD", "down", low_so_far, -1)]}
+
+
+def day_lines(candles: pd.DataFrame, stats: pd.DataFrame, target: date, today_range: float) -> list[dict]:
+    """The forecast before the open and after each of target's hourly candles so far, each from
+    earlier days only: how the HOD/LOD line moved through the day."""
+    hi, lo, close = through_hour(candles)
+    day = candles[candles.index.date == target]
+    out = []
+    for hour in [None, *range(day.index[-1].hour + 1)]:  # hours without a candle (17:00 halt) carry on
+        history = stats[[d < target for d in stats.index]]
+        if hour is not None:
+            upper = upper_half(hi, lo, close, hour)
+            history = history[upper.reindex(history.index) == upper[target]]
+        high = day.Open.iloc[0] if hour is None else hi.loc[target, hour]
+        low = day.Open.iloc[0] if hour is None else lo.loc[target, hour]
+        out.append({"hour": hour, "high": high, "low": low, "n": len(history),
+                    **forecast(extras(history, hi, lo, hour), high, low, today_range)})
+    return out
 
 
 def vix1d_closes() -> pd.Series:
@@ -117,31 +138,45 @@ def walk_forward(stats: pd.DataFrame, hi: pd.DataFrame, lo: pd.DataFrame, close:
                 row |= {f"{side}_done_pred": done, f"{side}_done_real": float(not went_further),
                         **{f"{side}_{int(p * 100)}": float(sign * (actual - lvl) >= 0) if went_further and not np.isnan(lvl) else np.nan
                            for p, lvl in zip(REACH, lvls)},
-                        f"{side}_miss": abs(actual - (now + sign * np.quantile(past[:, col], 0.5) * r)),
+                        f"{side}_miss": abs(actual - (line := now + sign * np.quantile(past[:, col], 0.5) * r)),
+                        # once price reached a line above/below the high/low so far, how much further it went
+                        f"{side}_past_line": sign * (actual - line) if sign * (actual - line) >= 0 and line != now else np.nan,
                         f"{side}_pinball": pinball(actual, past[:, col], now, sign, r)}
             rows.append(row)
     return pd.DataFrame(rows)
+
+
+def use_vix1d(stats: pd.DataFrame, force_r5: bool = False, closes: pd.Series | None = None) -> tuple[str, pd.Series]:
+    """Scale each day by VIX1D instead of its prior 5-day range when VIX1D covers the whole
+    history (Yahoo's 2 years, not LSE's 10): scored walk-forward on the last ~300 days it cut
+    the pinball loss ~3% from the open to 5:00 (paired t~-3) and changed nothing from 9:00 on.
+    Rewrites stats.r5 (the scale column the forecast reads) on the same days; returns the
+    yardstick's name and the VIX1D closes (downloaded unless given)."""
+    closes = vix1d_closes() if closes is None else closes
+    move = pd.Series([vix1d_move(closes, d, o) for d, o in stats.open.items()], index=stats.index)
+    if force_r5 or move[stats.r5.notna()].isna().any():
+        return "r5", closes
+    stats["r5"] = move.where(stats.r5.notna())
+    return "VIX1D", closes
+
+
+def today_scale(stats: pd.DataFrame, yardstick: str, closes: pd.Series, target: date, open_price: float) -> float:
+    return recent_range(stats, target) if yardstick == "r5" else vix1d_move(closes, target, open_price)
 
 
 if __name__ == "__main__":
     candles = load_candles()
     stats = daily_stats(candles)
     hi, lo, close = through_hour(candles)
-    # Scale each day by VIX1D instead of its prior 5-day range when VIX1D covers the whole
-    # history (Yahoo's 2 years, not LSE's 10): scored walk-forward on the last ~300 days it cut
-    # the pinball loss ~3% from the open to 5:00 (paired t~-3) and changed nothing from 9:00 on.
     # `python levels.py backtest r5` scores the old yardstick for comparison.
-    closes = vix1d_closes()
-    move = pd.Series([vix1d_move(closes, d, o) for d, o in stats.open.items()], index=stats.index)
-    yardstick = "r5" if "r5" in sys.argv[2:] or move[stats.r5.notna()].isna().any() else "VIX1D"
-    if yardstick == "VIX1D":
-        stats["r5"] = move.where(stats.r5.notna())  # r5 is the scale column the forecast reads; same days as before
+    yardstick, closes = use_vix1d(stats, "r5" in sys.argv[2:])
     if sys.argv[1:2] == ["backtest"]:
         result = walk_forward(stats.dropna(), hi, lo, close)
         print(f"{result.day.nunique()} days, {result.day.min()} .. {result.day.max()}, scaled by {yardstick}")
         print("*_done_pred vs *_done_real: forecast vs real share of days already done at that hour;")
         print("HOD_75 etc.: on days that went further, share reaching the '75%' level (honest: ~0.75);")
-        print("*_miss: average points between the overall median forecast and the real HOD/LOD\n")
+        print("*_miss: average points between the overall median forecast (the line) and the real HOD/LOD;")
+        print("*_past_line: on days price reached a line away from the high/low so far, points it went beyond it\n")
         print(result.groupby("hour", sort=False).mean(numeric_only=True).round(3).to_string())
         sys.exit()
     try:
@@ -157,22 +192,17 @@ if __name__ == "__main__":
         sys.exit(f"No 00:00 candle for {target} yet: run after midnight New York time.")
     if hour is not None and hour > day.index[-1].hour:
         sys.exit(f"The {hour}:00 candle of {target} is not in yet (latest {day.index[-1].hour}:00).")
-    history = stats[[d < target for d in stats.index]]
-    if hour is not None:
-        upper = upper_half(hi, lo, close, hour)
-        history = history[upper.reindex(history.index) == upper[target]]
     open_price = day.Open.iloc[0]
-    today_range = recent_range(stats, target) if yardstick == "r5" else vix1d_move(closes, target, open_price)
-    hod_now = open_price if hour is None else hi.loc[target, hour]
-    lod_now = open_price if hour is None else lo.loc[target, hour]
-    f = forecast(extras(history, hi, lo, hour), hod_now, lod_now, today_range)
+    today_range = today_scale(stats, yardstick, closes, target, open_price)
+    f = next(r for r in day_lines(candles[candles.index.date <= target], stats, target, today_range) if r["hour"] == hour)
+    hod_now, lod_now = f["high"], f["low"]
     when = "before the open" if hour is None else f"after the {hour}:00 candle: high {hod_now:.2f}, low {lod_now:.2f}"
     kind = f"{events[target]} day, " if target in events else ""
-    print(f"{target} {kind}open {open_price:.2f}, {"5-day range" if yardstick == "r5" else "VIX1D move"} {today_range:.1f}, {when}  ({len(history)} similar past days)")
+    print(f"{target} {kind}open {open_price:.2f}, {"5-day range" if yardstick == "r5" else "VIX1D move"} {today_range:.1f}, {when}  ({f['n']} similar past days)")
     for side in ("HOD", "LOD"):
         lv = " / ".join(f"{x:.2f}" for x in f[side]["levels"])
         print(f"  {side}: already in on {f[side]['done']:.0%} of similar days; "
-              f"if it goes further: {lv} (reached on 75% / 50% / 25% of those)")
+              f"if it goes further: {lv} (reached on 75% / 50% / 25% of those); best guess {f[side]['line']:.2f}")
     if target in events:
         print(f"  Warning: on past {events[target]} days the range ran ~{EVENT_SIZE[events[target]]}x normal and these "
               "levels were reached more often than stated (the 14:00 FOMC decision often sets the HOD/LOD late). "
