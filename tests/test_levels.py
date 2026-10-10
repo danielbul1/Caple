@@ -12,6 +12,11 @@ def candles(rows):
     return pd.DataFrame([r[1:] for r in rows], index=idx, columns=["Open", "High", "Low", "Close"])
 
 
+def test_position_of_a_flat_range_is_the_middle_bin():
+    df = candles([("2026-11-10 00:00", 100, 100, 100, 100)])
+    assert levels.position(*levels.through_hour(df), 0).loc[date(2026, 11, 10)] == 2
+
+
 def test_through_hour_is_the_running_high_and_low_by_each_hour():
     df = candles([("2026-11-10 00:00", 100, 105, 99, 101), ("2026-11-10 01:00", 101, 103, 95, 96),
                   ("2026-11-10 03:00", 96, 110, 96, 108)])
@@ -20,9 +25,9 @@ def test_through_hour_is_the_running_high_and_low_by_each_hour():
     assert [hi.loc[day, h] for h in (0, 1, 2, 3, 23)] == [105, 105, 105, 110, 110]
     assert [lo.loc[day, h] for h in (0, 1, 2, 3)] == [99, 95, 95, 95]
     assert [close.loc[day, h] for h in (1, 2, 3)] == [96, 96, 108]
-    # After 1:00 price (96) sits in the lower half of 95..105; after 3:00 (108) in the upper half of 95..110.
-    assert levels.upper_half(hi, lo, close, 1).loc[day] == False
-    assert levels.upper_half(hi, lo, close, 3).loc[day] == True
+    # Where price sits in the range so far, in fifths: after 1:00, 96 is 10% up 95..105 (bin 0);
+    # after 3:00, 108 is 87% up 95..110 (bin 4); after 0:00, 101 is 33% up 99..105 (bin 1).
+    assert [levels.position(hi, lo, close, h).loc[day] for h in (1, 3, 0)] == [0, 4, 1]
 
 
 def test_extras_measure_what_was_still_to_come_in_5_day_ranges():
@@ -51,7 +56,7 @@ def test_nothing_after_the_hour_changes_what_is_known_at_that_hour():
     day = date(2026, 11, 10)
     for h in (0, 1, 4):
         assert [x.loc[day, h] for x in a] == [x.loc[day, h] for x in b]
-        assert levels.upper_half(*a, h).loc[day] == levels.upper_half(*b, h).loc[day]
+        assert levels.position(*a, h).loc[day] == levels.position(*b, h).loc[day]
 
 
 def test_pinball_scores_the_25_50_75_quantile_levels():

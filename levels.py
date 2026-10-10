@@ -4,8 +4,9 @@ Before the open only the open is known; after each hourly candle the day's high
 and low so far are known too. For every past day we measure how much further the
 high still rose and the low still fell after that point, in units of that day's
 VIX9D implied daily move (so calm and wild days compare), using only past days where
-price at that hour sat in the same half of the range so far as today (cuts the miss
-~10% at 9:00). Today's levels are the high and low so far plus those extras times
+price at that hour sat in the same fifth of the range so far as today (halves cut the
+miss ~10% at 9:00; fifths, picked on 2018-2021, cut the pinball loss another ~4% at 9:00
+and 12:00 on 2022-2026, paired t -4.6 and -5.0, and changed nothing before 5:00). Today's levels are the high and low so far plus those extras times
 today's yardstick:
 
 - done: share of past days whose HOD (or LOD) was already in at this point
@@ -49,9 +50,11 @@ def through_hour(candles: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.
             by_hour(candles.Close, "last").ffill(axis=1))
 
 
-def upper_half(hi: pd.DataFrame, lo: pd.DataFrame, close: pd.DataFrame, hour: int) -> pd.Series:
-    """Is price after `hour` in the upper half of the day's range so far?"""
-    return close[hour] > (hi[hour] + lo[hour]) / 2
+def position(hi: pd.DataFrame, lo: pd.DataFrame, close: pd.DataFrame, hour: int, bins: int = 5) -> pd.Series:
+    """Which `bins`-th of the day's range so far price sits in after `hour` (0 = bottom);
+    a flat range counts as the middle."""
+    where = ((close[hour] - lo[hour]) / (hi[hour] - lo[hour]).where(hi[hour] > lo[hour])).fillna(0.5)
+    return (where * bins).clip(upper=bins - 1).astype(int)
 
 
 def pinball(actual: float, past: np.ndarray, now: float, sign: int, today_range: float) -> float:
@@ -104,8 +107,8 @@ def day_lines(candles: pd.DataFrame, stats: pd.DataFrame, target: date, today_ra
     for hour in [None, *range(day.index[-1].hour + 1)]:  # hours without a candle (17:00 halt) carry on
         history = stats[[d < target for d in stats.index]]
         if hour is not None:
-            upper = upper_half(hi, lo, close, hour)
-            history = history[upper.reindex(history.index) == upper[target]]
+            where = position(hi, lo, close, hour)
+            history = history[where.reindex(history.index) == where[target]]
         high = day.Open.iloc[0] if hour is None else hi.loc[target, hour]
         low = day.Open.iloc[0] if hour is None else lo.loc[target, hour]
         out.append({"hour": hour, "high": high, "low": low, "n": len(history),
@@ -135,10 +138,10 @@ def walk_forward(stats: pd.DataFrame, hi: pd.DataFrame, lo: pd.DataFrame, close:
         ex = extras(stats, hi, lo, hour).to_numpy()
         hi_now = (stats.open if hour is None else hi[hour].reindex(stats.index)).to_numpy()
         lo_now = (stats.open if hour is None else lo[hour].reindex(stats.index)).to_numpy()
-        upper = (np.zeros(len(stats), bool) if hour is None
-                 else upper_half(hi, lo, close, hour).reindex(stats.index).to_numpy(bool))
+        where = (np.zeros(len(stats), int) if hour is None
+                 else position(hi, lo, close, hour).reindex(stats.index).to_numpy(int))
         for i in range(warmup, len(stats)):
-            past = ex[:i][~np.isnan(ex[:i]).any(axis=1) & (upper[:i] == upper[i])]
+            past = ex[:i][~np.isnan(ex[:i]).any(axis=1) & (where[:i] == where[i])]
             day, r = stats.iloc[i], stats.r5.iloc[i]
             row = {"hour": "open" if hour is None else f"{hour}:00", "day": stats.index[i]}
             for side, col, now, sign, actual in [("HOD", 0, hi_now[i], 1, day.high), ("LOD", 1, lo_now[i], -1, day.low)]:

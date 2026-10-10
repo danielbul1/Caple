@@ -33,13 +33,32 @@ python levels.py backtest          # walk-forward calibration on all the data
 
 At the open, or after any hourly candle, prints the chance the day's high and low
 are already in and, if they go further, the prices reached on 75% / 50% / 25% of
-similar past days (same hour, price in the same half of the range so far, scaled
+similar past days (same hour, price in the same fifth of the range so far, scaled
 to today's VIX9D implied daily move). On LSE's 10 years walk-forward (2017-2026, 2,210
 days) VIX9D beat the prior 5-day range at the open (pinball -2%, paired t -5), less so
 later; VIX1D was no better and only starts in 2023. `python levels.py backtest r5` scores
 the old yardstick. Everything is calibrated: at 9:00 the HOD was forecast already in on
 39.5% of days and was on 39.0%; the levels were reached on 76/54/27% of days. The miss of
 the median shrinks from ~17-20 points at the open to ~10-12 at 9:00 and ~6 at 12:00.
+
+## What improves accuracy (tested on LSE 2018-2026, walk-forward)
+
+Change in HOD+LOD pinball loss vs the model above; negative is better, t in brackets.
+
+| Idea (source) | open | 9:00 | 12:00 | Kept? |
+|---|---|---|---|---|
+| VIX9D instead of 5-day range (implied vol, Albers 2025) | -2% (-5) | -1% | ~0 | yes |
+| Position in fifths of the range so far, not halves | 0 | -3% (-5) | -4% (-6) | yes |
+| HAR range forecast (Corsi 2009) on top of VIX9D | -0.6% (-3) | ~0 | ~0 | no, too small |
+| Match days on share of the range used so far ("% ATR used") | 0 | -0.3% | ~0 | no |
+| Weight recent days more (half-life 150/500 days) | ~0 | ~0 | ~0 | no |
+| LightGBM quantile regression (7-9 features) | +0.6% worse | -2% (-4) | -4% (-6) | no: fifths do the same simply |
+| Day-of-month / weekday samples (QuantiStat) | worse/0 | - | - | no |
+| Bright heatmap lines | no better than a random day | | | no |
+
+The size of the day is predictable (implied volatility does most of it); its direction is
+not, so no level set beats ~22/27 points of pinball at the open. During the day, where price
+sits in its range so far is the useful information.
 
 ## Scorecard: which levels are right, every day
 
