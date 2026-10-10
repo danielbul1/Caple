@@ -11,6 +11,8 @@ literature:
   its high and closed back below (bearish); otherwise no call (ICT/CRT liquidity sweep)
 - trend: yesterday closed above its 20-day average close
 - turn_of_month: last weekday of a month or the first three weekdays (calls bullish)
+- seasonal_10y/5y/2y/agree: the market-bulls.com seasonal tendency the video reads
+  (see seasonal.py); "agree" calls only when all three windows point the same way
 
 Pre-registered gate: each rule's direction is fixed on 2016-2021 (flipped if it was
 right less than half the time) and then scored once on 2022 onward. A rule passes
@@ -30,6 +32,7 @@ from datetime import date, timedelta
 import numpy as np
 import pandas as pd
 
+import seasonal
 from quantistat import daily_stats, load_candles
 
 SPLIT = date(2022, 1, 1)
@@ -88,7 +91,8 @@ if __name__ == "__main__":
     stats = daily_stats(candles)
     globex = globex_opens(candles)
     globex = globex[~globex.index.duplicated()]
-    table = evaluate(rules(stats, globex), stats.bullish)
+    calls = rules(stats, globex).join(seasonal.rules(seasonal.by_date(seasonal.daily_changes()), stats.index))
+    table = evaluate(calls, stats.bullish)
     print(f"{len(stats)} days {stats.index[0]} .. {stats.index[-1]}, split {SPLIT}, "
           f"bullish {stats.bullish.mean():.1%}\n")
     print(table.round(3).to_string(index=False))

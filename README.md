@@ -51,4 +51,8 @@ beats same weekday or simply all days (bias taken as known).
 18:00 open, close location, premium/discount, liquidity sweep, trend, turn of
 month): direction fixed on 2016-2021, scored once on 2022+. None beat always
 guessing bullish, so the charts still take the bias as your input.
+`python seasonal.py 2026-10-12` draws the market-bulls.com style seasonal
+tendencies (10/5/2-year average path from Yahoo daily ES since 2000) and prints
+that day's seasonal bias; bias.py tests it too, and it does not beat always
+bullish either (2022+: 50.9% when all three windows agree vs 49.7%).
 Tests: `pip install pytest && pytest`.
