@@ -7,11 +7,12 @@ against the day and appends the rows to journal.csv (a re-run replaces that day)
 - *_call_right: the more likely side came true (HOD said "already in" at >= 50% and it
   was, or said "still to come" and it was)
 - *_75/50/25: on days that went further, was the level reached (honest: ~75/50/25%)
+- *_in_band: on those days, did the HOD/LOD land between the 75% and 25% levels (honest: ~50%)
 - *_miss, *_pinball: points off, as in `levels.py backtest`
 
 Then prints the day and the running record of every day in the journal.
 
-Run: python journal.py [DATE ...]   (default: yesterday, New York time; meant for just
+Run: python journal.py [DATE or FROM..TO ...]   (default: yesterday, New York time; meant for just
      after midnight New York, when the calendar day is complete)
 """
 
@@ -30,18 +31,22 @@ JOURNAL = Path(__file__).with_name("journal.csv")
 
 def add_verdicts(rows: pd.DataFrame) -> pd.DataFrame:
     return rows.assign(**{f"{s}_call_right": (rows[f"{s}_done_pred"] >= 0.5) == (rows[f"{s}_done_real"] == 1)
+                          for s in ("HOD", "LOD")},
+                       **{f"{s}_in_band": ((rows[f"{s}_75"] == 1) & (rows[f"{s}_25"] == 0)).astype(float).where(rows[f"{s}_75"].notna())
                           for s in ("HOD", "LOD")})
 
 
-def score_day(candles: pd.DataFrame, target: date) -> pd.DataFrame:
-    """Empty if the day is not scored (no 00:00 open, expiry week or contract roll)."""
+def score_days(candles: pd.DataFrame, start: date, end: date) -> pd.DataFrame:
+    """Every scored day from start to end, each from earlier days only; empty if none is scored
+    (no 00:00 open, expiry week or contract roll)."""
     stats = daily_stats(candles)
     use_implied(stats)
     stats = stats.dropna()
-    stats = stats[stats.index <= target]
-    if len(stats) == 0 or stats.index[-1] != target:
+    stats = stats[stats.index <= end]
+    first = int((stats.index < start).sum())
+    if first == len(stats):
         return pd.DataFrame()
-    return add_verdicts(walk_forward(stats, *through_hour(candles), warmup=len(stats) - 1))
+    return add_verdicts(walk_forward(stats, *through_hour(candles), warmup=first))
 
 
 def append(path: Path, rows: pd.DataFrame) -> None:
@@ -52,15 +57,19 @@ def append(path: Path, rows: pd.DataFrame) -> None:
 
 
 if __name__ == "__main__":
-    days = [date.fromisoformat(d) for d in sys.argv[1:]] or [today_market() - timedelta(days=1)]
+    yesterday = (today_market() - timedelta(days=1)).isoformat()
     candles = load_candles()
-    for day in days:
-        rows = score_day(candles, day)
+    for arg in sys.argv[1:] or [yesterday]:
+        start, end = (date.fromisoformat(d) for d in (arg.split("..") if ".." in arg else [arg, arg]))
+        rows = score_days(candles, start, min(end, date.fromisoformat(yesterday)))  # today isn't finished
         if rows.empty:
-            print(f"{day}: not scored (weekend/holiday, expiry week, contract roll or no 00:00 open)")
+            print(f"{arg}: not scored (weekend/holiday, expiry week, contract roll or no 00:00 open)")
             continue
         append(JOURNAL, rows)
-        print(f"{day}:")
+        if start != end:
+            print(f"{arg}: {rows.day.nunique()} days scored")
+            continue
+        print(f"{arg}:")
         for _, r in rows.iterrows():
             print(f"  {r.hour:>5}  HOD in {r.HOD_done_pred:4.0%} -> {'right' if r.HOD_call_right else 'WRONG'}, "
                   f"off {r.HOD_miss:5.1f} pts | LOD in {r.LOD_done_pred:4.0%} -> "
@@ -70,5 +79,5 @@ if __name__ == "__main__":
         print(f"\nJournal: {record.day.nunique()} days, {record.day.min()} .. {record.day.max()}")
         print("calls right, levels reached (honest ~0.75/0.5/0.25) and points off, by hour:")
         cols = ["HOD_call_right", "LOD_call_right", "HOD_75", "HOD_50", "HOD_25", "LOD_75", "LOD_50", "LOD_25",
-                "HOD_miss", "LOD_miss"]
+                "HOD_in_band", "LOD_in_band", "HOD_miss", "LOD_miss"]
         print(record.groupby("hour", sort=False)[cols].mean().round(2).to_string())

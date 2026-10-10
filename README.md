@@ -86,12 +86,30 @@ only and is scored against the day (per-day rows in `scorecard.csv`). On 2,089 d
 ```bash
 python journal.py              # yesterday (run just after midnight New York)
 python journal.py 2026-10-09   # any finished days
+python journal.py 2024-10-10..2026-10-09   # every day in a range
 ```
 
 Replays levels.py's forecast for a finished day (before the open and after the
-2/5/9/12/15:00 candles, from earlier days only), marks each call right or WRONG, appends
-it to the tracked `journal.csv` and prints the running record. A scheduled routine runs it
-every trading day and pushes the journal.
+2/5/9/12/15:00 candles, from earlier days only), marks each call right or WRONG and whether
+the HOD/LOD landed between the 75% and 25% levels (`*_in_band`), appends it to the tracked
+`journal.csv` and prints the running record. A scheduled routine runs it every trading day
+and pushes the journal.
+
+Backfilled on 2026-10-10 with every scored day of the two years before (2024-10-10 .. 2026-10-09,
+475 days; expiry weeks, contract rolls and holidays are skipped):
+
+| hour | HOD call right | LOD call right | HOD in band | LOD in band | HOD off | LOD off |
+|---|---|---|---|---|---|---|
+| open | 100% | 100% | 52% | 50% | 24.6 | 28.2 |
+| 2:00 | 87% | 83% | 52% | 50% | 23.0 | 26.7 |
+| 5:00 | 79% | 73% | 50% | 51% | 20.3 | 23.7 |
+| 9:00 | 74% | 68% | 50% | 55% | 13.8 | 16.4 |
+| 12:00 | 80% | 76% | 55% | 51% | 7.0 | 7.7 |
+| 15:00 | 79% | 87% | 51% | 45% | 2.8 | 2.8 |
+
+"In band" should be ~50% if the levels are honest, and it is. "Off" is points between the
+best-guess line and the real HOD/LOD. At the open, "call right" only says the high/low was
+still to come, which is almost always true, so it carries no information there.
 
 ## Live HOD/LOD price heatmap
 
