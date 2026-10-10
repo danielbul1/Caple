@@ -35,4 +35,6 @@ day-of-month (calendar days 00:00-23:00 NY time). Quarterly expiry weeks and day
 Yahoo's continuous ES=F jumps between contracts are dropped (bad HOD/LOD). Saves `time_based.png` (hour
 of HOD/LOD split by bullish/bearish day) and `price_based.png` (HOD/LOD distance
 from the open in points; above 0 = HOD, below 0 = LOD, brighter = more often).
+`python backtest.py` checks, walk-forward, whether picking days by day-of-month
+beats same weekday or simply all days (bias taken as known).
 Tests: `pip install pytest && pytest`.
