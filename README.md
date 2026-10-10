@@ -47,4 +47,8 @@ Levels are rescaled to today's volatility (each day's distance divided by its
 prior 5-day average range, times today's), so old low-volatility years still count.
 `python backtest.py` checks, walk-forward, whether picking days by day-of-month
 beats same weekday or simply all days (bias taken as known).
+`python bias.py` tests 7 simple daily bias rules (previous day, overnight vs
+18:00 open, close location, premium/discount, liquidity sweep, trend, turn of
+month): direction fixed on 2016-2021, scored once on 2022+. None beat always
+guessing bullish, so the charts still take the bias as your input.
 Tests: `pip install pytest && pytest`.
