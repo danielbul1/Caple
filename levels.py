@@ -3,10 +3,11 @@
 Before the open only the open is known; after each hourly candle the day's high
 and low so far are known too. For every past day we measure how much further the
 high still rose and the low still fell after that point, in units of that day's
-prior 5-day average range (so 2016 and 2026 compare), using only past days where
+VIX1D implied move, or prior 5-day average range where VIX1D does not reach back
+(so calm and wild days compare), using only past days where
 price at that hour sat in the same half of the range so far as today (cuts the miss
 ~10% at 9:00). Today's levels are the high and low so far plus those extras times
-today's 5-day range:
+today's yardstick:
 
 - done: share of past days whose HOD (or LOD) was already in at this point
 - levels: if it goes further, the prices it reached on 75% / 50% / 25% of the past
@@ -15,7 +16,8 @@ today's 5-day range:
 
 Run: python levels.py [DATE] [HOUR]   (HOUR = after that hour's candle, "open" for the
      pre-open view; omit for the latest candle of DATE)
-     python levels.py backtest        (walk-forward calibration on all the data)
+     python levels.py backtest [r5]   (walk-forward calibration on all the data; r5 forces the
+                                       5-day range yardstick, to compare with VIX1D)
 """
 
 import os
@@ -24,6 +26,7 @@ from datetime import date
 
 import numpy as np
 import pandas as pd
+import yfinance as yf
 
 import lse_source
 from quantistat import REACH, daily_stats, load_candles, recent_range, today_market
@@ -60,7 +63,7 @@ def pinball(actual: float, past: np.ndarray, now: float, sign: int, today_range:
 
 
 def extras(stats: pd.DataFrame, hi: pd.DataFrame, lo: pd.DataFrame, hour: int | None) -> pd.DataFrame:
-    """How far the HOD/LOD still went beyond the high/low known at `hour`, in 5-day ranges."""
+    """How far the HOD/LOD still went beyond the high/low known at `hour`, in yardsticks (r5 column)."""
     hi_now = stats.open if hour is None else hi[hour].reindex(stats.index)
     lo_now = stats.open if hour is None else lo[hour].reindex(stats.index)
     return pd.DataFrame({"up": (stats.high - hi_now) / stats.r5, "down": (lo_now - stats.low) / stats.r5})
@@ -78,6 +81,20 @@ def forecast(ex: pd.DataFrame, high_so_far: float, low_so_far: float, today_rang
     ex = ex.dropna()
     return {side: dict(zip(["done", "levels"], odds(ex[col].to_numpy(), now, sign, today_range)))
             for side, col, now, sign in [("HOD", "up", high_so_far, 1), ("LOD", "down", low_so_far, -1)]}
+
+
+def vix1d_closes() -> pd.Series:
+    """Daily closes of Cboe's VIX1D (implied S&P move for the next day, since 2023-04)."""
+    closes = yf.download("^VIX1D", period="max", interval="1d", progress=False, multi_level_index=False).Close
+    closes.index = closes.index.date
+    return closes
+
+
+def vix1d_move(closes: pd.Series, day: date, open_price: float) -> float:
+    """The last VIX1D close before `day` (the 00:00 open comes before that day's close) as the
+    implied one-day move in points (one standard deviation): a yardstick known at the open."""
+    before = closes[closes.index < day]
+    return before.iloc[-1] / 100 / np.sqrt(252) * open_price if len(before) else np.nan
 
 
 def walk_forward(stats: pd.DataFrame, hi: pd.DataFrame, lo: pd.DataFrame, close: pd.DataFrame,
@@ -110,9 +127,18 @@ if __name__ == "__main__":
     candles = load_candles()
     stats = daily_stats(candles)
     hi, lo, close = through_hour(candles)
+    # Scale each day by VIX1D instead of its prior 5-day range when VIX1D covers the whole
+    # history (Yahoo's 2 years, not LSE's 10): scored walk-forward on the last ~300 days it cut
+    # the pinball loss ~3% from the open to 5:00 (paired t~-3) and changed nothing from 9:00 on.
+    # `python levels.py backtest r5` scores the old yardstick for comparison.
+    closes = vix1d_closes()
+    move = pd.Series([vix1d_move(closes, d, o) for d, o in stats.open.items()], index=stats.index)
+    yardstick = "r5" if "r5" in sys.argv[2:] or move[stats.r5.notna()].isna().any() else "VIX1D"
+    if yardstick == "VIX1D":
+        stats["r5"] = move.where(stats.r5.notna())  # r5 is the scale column the forecast reads; same days as before
     if sys.argv[1:2] == ["backtest"]:
         result = walk_forward(stats.dropna(), hi, lo, close)
-        print(f"{result.day.nunique()} days, {result.day.min()} .. {result.day.max()}")
+        print(f"{result.day.nunique()} days, {result.day.min()} .. {result.day.max()}, scaled by {yardstick}")
         print("*_done_pred vs *_done_real: forecast vs real share of days already done at that hour;")
         print("HOD_75 etc.: on days that went further, share reaching the '75%' level (honest: ~0.75);")
         print("*_miss: average points between the overall median forecast and the real HOD/LOD\n")
@@ -135,14 +161,14 @@ if __name__ == "__main__":
     if hour is not None:
         upper = upper_half(hi, lo, close, hour)
         history = history[upper.reindex(history.index) == upper[target]]
-    today_range = recent_range(stats, target)
     open_price = day.Open.iloc[0]
+    today_range = recent_range(stats, target) if yardstick == "r5" else vix1d_move(closes, target, open_price)
     hod_now = open_price if hour is None else hi.loc[target, hour]
     lod_now = open_price if hour is None else lo.loc[target, hour]
     f = forecast(extras(history, hi, lo, hour), hod_now, lod_now, today_range)
     when = "before the open" if hour is None else f"after the {hour}:00 candle: high {hod_now:.2f}, low {lod_now:.2f}"
     kind = f"{events[target]} day, " if target in events else ""
-    print(f"{target} {kind}open {open_price:.2f}, 5-day range {today_range:.1f}, {when}  ({len(history)} similar past days)")
+    print(f"{target} {kind}open {open_price:.2f}, {"5-day range" if yardstick == "r5" else "VIX1D move"} {today_range:.1f}, {when}  ({len(history)} similar past days)")
     for side in ("HOD", "LOD"):
         lv = " / ".join(f"{x:.2f}" for x in f[side]["levels"])
         print(f"  {side}: already in on {f[side]['done']:.0%} of similar days; "

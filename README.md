@@ -34,7 +34,12 @@ python levels.py backtest          # walk-forward calibration on all the data
 At the open, or after any hourly candle, prints the chance the day's high and low
 are already in and, if they go further, the prices reached on 75% / 50% / 25% of
 similar past days (same hour, price in the same half of the range so far, scaled
-to today's 5-day range). On 10 years walk-forward both are calibrated (e.g. at
+to today's VIX1D implied move; with LSE's 10 years, which VIX1D doesn't reach back to,
+the prior 5-day range instead). Scored walk-forward on the last ~300 days of Yahoo's
+2 years, VIX1D cut the pinball
+loss ~3% from the open to 5:00 vs the 5-day range (paired t ~ -3) and changed nothing
+from 9:00 on; `python levels.py backtest r5` scores the old yardstick.
+On 10 years walk-forward both are calibrated (e.g. at
 9:00: HOD already in forecast 39.5%, real 39.0%; levels reached 76/52/27%), and
 the miss of the median shrinks from ~18-20 points at the open to ~10-12 at 9:00
 and ~6 at 12:00.

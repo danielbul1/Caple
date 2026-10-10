@@ -66,3 +66,12 @@ def test_pinball_scores_the_25_50_75_quantile_levels():
 def test_odds_when_no_similar_day_went_further():
     done, lvls = levels.odds(np.array([0.0, 0.0]), 100.0, 1, 10.0)
     assert done == 1.0 and all(np.isnan(lvls))
+
+
+def test_vix1d_move_uses_the_last_close_before_the_day():
+    closes = pd.Series([10.0, 20.0], index=[date(2026, 11, 6), date(2026, 11, 9)])
+    # Tuesday 11-10 opens at 00:00, before that day's VIX1D close: Monday's 20 is the latest known.
+    # VIX1D is annualised: 20% a year is 20% / sqrt(252) of the open for one day (63 points).
+    assert levels.vix1d_move(closes, date(2026, 11, 10), 5000.0) == 0.2 * 5000.0 / np.sqrt(252)
+    assert levels.vix1d_move(closes, date(2026, 11, 9), 5000.0) == 0.1 * 5000.0 / np.sqrt(252)  # Friday's, over the weekend
+    assert np.isnan(levels.vix1d_move(closes, date(2026, 11, 6), 5000.0))   # nothing known yet
