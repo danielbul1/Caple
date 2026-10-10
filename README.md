@@ -24,6 +24,21 @@ Open http://localhost:5000.
 - `GET /api/candles?date=YYYY-MM-DD`: candles as JSON.
 - `GET /api/candles?date=YYYY-MM-DD&format=csv`: candles as a CSV download.
 
+## Today's HOD/LOD, no bias needed
+
+```bash
+python levels.py 2026-10-09 9      # after the 9:00 candle ("open" = before the open)
+python levels.py backtest          # walk-forward calibration on all the data
+```
+
+At the open, or after any hourly candle, prints the chance the day's high and low
+are already in and, if they go further, the prices reached on 75% / 50% / 25% of
+similar past days (same hour, price in the same half of the range so far, scaled
+to today's 5-day range). On 10 years walk-forward both are calibrated (e.g. at
+9:00: HOD already in forecast 39.5%, real 39.0%; levels reached 76/52/27%), and
+the miss of the median shrinks from ~18-20 points at the open to ~10-12 at 9:00
+and ~6 at 12:00.
+
 ## QuantiStat charts
 
 With a free London Strategic Edge key in `LSE_API_KEY`
