@@ -8,4 +8,4 @@ description: Clarify and plan before building anything non-trivial - a new featu
 1. **Understand.** Read the relevant code. Ask the few questions whose answers change what you build (one at a time, multiple choice when possible). Don't ask what you can find out yourself.
 2. **Pick one approach.** Briefly name the alternatives, recommend one, and say why. Default to the simplest that meets the goal (YAGNI).
 3. **Write a short plan.** A numbered list of small steps; each names the files it touches and how you'll verify it. Keep it to what fits on a screen.
-4. **Get a yes, then build** step by step, verifying each step before the next. If reality contradicts the plan, stop and update it instead of improvising.
+4. **Get a yes, then build** (when run inside `build`, don't wait - state the plan and continue) step by step, verifying each step before the next. If reality contradicts the plan, stop and update it instead of improvising.
