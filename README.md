@@ -62,6 +62,18 @@ only and is scored against the day (per-day rows in `scorecard.csv`). On 2,089 d
   rule found that bias in advance (bias.py), so this is the ceiling of a perfect hand-picked
   bias, not something achievable.
 
+## Daily journal: was I right today?
+
+```bash
+python journal.py              # yesterday (run just after midnight New York)
+python journal.py 2026-10-09   # any finished days
+```
+
+Replays levels.py's forecast for a finished day (before the open and after the
+2/5/9/12/15:00 candles, from earlier days only), marks each call right or WRONG, appends
+it to the tracked `journal.csv` and prints the running record. A scheduled routine runs it
+every trading day and pushes the journal.
+
 ## Live HOD/LOD price heatmap
 
 The top of the page (`GET /api/lines?date=YYYY-MM-DD`, default the latest day) draws the

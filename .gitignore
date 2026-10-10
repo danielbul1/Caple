@@ -5,3 +5,4 @@ __pycache__/
 *.png
 lse_events.json
 .env
+!journal.csv
