@@ -34,15 +34,32 @@ python levels.py backtest          # walk-forward calibration on all the data
 At the open, or after any hourly candle, prints the chance the day's high and low
 are already in and, if they go further, the prices reached on 75% / 50% / 25% of
 similar past days (same hour, price in the same half of the range so far, scaled
-to today's VIX1D implied move; with LSE's 10 years, which VIX1D doesn't reach back to,
-the prior 5-day range instead). Scored walk-forward on the last ~300 days of Yahoo's
-2 years, VIX1D cut the pinball
-loss ~3% from the open to 5:00 vs the 5-day range (paired t ~ -3) and changed nothing
-from 9:00 on; `python levels.py backtest r5` scores the old yardstick.
-On 10 years walk-forward both are calibrated (e.g. at
-9:00: HOD already in forecast 39.5%, real 39.0%; levels reached 76/52/27%), and
-the miss of the median shrinks from ~18-20 points at the open to ~10-12 at 9:00
-and ~6 at 12:00.
+to today's VIX9D implied daily move). On LSE's 10 years walk-forward (2017-2026, 2,210
+days) VIX9D beat the prior 5-day range at the open (pinball -2%, paired t -5), less so
+later; VIX1D was no better and only starts in 2023. `python levels.py backtest r5` scores
+the old yardstick. Everything is calibrated: at 9:00 the HOD was forecast already in on
+39.5% of days and was on 39.0%; the levels were reached on 76/54/27% of days. The miss of
+the median shrinks from ~17-20 points at the open to ~10-12 at 9:00 and ~6 at 12:00.
+
+## Scorecard: which levels are right, every day
+
+```bash
+python scorecard.py 2024-12-26 2025-01-02   # all methods, 2018-2026, plus those days' calls
+```
+
+Every day since 2018, before the open, each method builds HOD/LOD levels from earlier days
+only and is scored against the day (per-day rows in `scorecard.csv`). On 2,089 days:
+
+- Scaling matters most: raw points (QuantiStat) lose 28.3/31.5 points (HOD/LOD pinball)
+  and their "75%" level is reached on 86% of days (prices rose since 2018); scaled by VIX9D
+  22.9/27.4 and calibrated (76/51/27%).
+- Which past days you pick barely matters: same day of month (QuantiStat), same weekday
+  and all days are within noise; all days scaled by VIX9D is best.
+- The bright heatmap lines know nothing about the day: the HOD/LOD lands within 3 points of
+  one of the 3 brightest lines on ~31% of days, and so does another random day's HOD/LOD.
+- Only knowing the day's bias (its real close vs open) helps: pinball 18/22 and the bright
+  lines then beat chance by ~12 points. No rule found that bias in advance (bias.py), so
+  this is the ceiling of a perfect hand-picked bias, not something achievable.
 
 ## Live HOD/LOD price heatmap
 

@@ -60,15 +60,15 @@ def fetch_candles(picked: date) -> pd.DataFrame:
 
 
 def live_candles() -> tuple[pd.DataFrame, pd.Series]:
-    """The last ~2 years of 1h candles up to now (the current hour still forming) and VIX1D's
+    """The last ~2 years of 1h candles up to now (the current hour still forming) and VIX9D's
     daily closes, refreshed at most every LIVE_TTL seconds."""
-    from levels import vix1d_closes  # levels imports this module
+    from levels import implied_closes  # levels imports this module
 
     global _live
     if _live is None or monotonic() - _live[0] > LIVE_TTL:
         today = today_market()
         candles = download(today - timedelta(days=LOOKBACK_DAYS - 1), today + timedelta(days=1))
-        _live = (monotonic(), candles, vix1d_closes())
+        _live = (monotonic(), candles, implied_closes())
     return _live[1], _live[2]
 
 
@@ -167,7 +167,7 @@ def candles():
 def lines():
     """The HOD/LOD line of a day (default: the latest), as forecast before the open and after
     each hourly candle so far; the page redraws it live."""
-    from levels import day_lines, today_scale, use_vix1d  # levels imports this module
+    from levels import day_lines, today_scale, use_implied  # levels imports this module
     from quantistat import daily_stats
 
     try:
@@ -179,7 +179,7 @@ def lines():
     if len(day) == 0 or day.index[0].hour != 0:
         return jsonify({"error": f"No 00:00 candle for {target}"}), 404
     stats = daily_stats(candles)
-    yardstick, closes = use_vix1d(stats, closes=closes)
+    yardstick, closes = use_implied(stats, closes=closes)
     rows = day_lines(candles, stats, target, today_scale(stats, yardstick, closes, target, day.Open.iloc[0]))
     num = lambda x: None if isnan(x) else round(float(x), 2)
     return jsonify(
