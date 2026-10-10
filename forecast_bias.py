@@ -34,7 +34,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 
-from app import SYMBOL
+from app import SYMBOL, today_market
 
 FIRST_TEST_YEAR = 2016
 FEATURES = ["ret1", "ret2", "ret5", "range_ratio", "close_loc", "ma20_dist", "vix", "vix_chg",
@@ -45,7 +45,7 @@ def load() -> pd.DataFrame:
     get = lambda s: yf.download(s, start="2000-01-01", interval="1d", progress=False,
                                 auto_adjust=False, multi_level_index=False)
     es, vix = get(SYMBOL), get("^VIX")
-    es = es[(es.High > es.Low)]  # drop flat placeholder rows
+    es = es[(es.High > es.Low) & (es.index.date < today_market())]  # no flat placeholders, no unfinished session
     return es[["Open", "High", "Low", "Close"]].join(vix.Close.rename("VIX")).ffill()
 
 
