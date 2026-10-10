@@ -46,7 +46,7 @@
 <main>
   <section class="lines">
     <h1>ES=F · מפת רמות HOD/LOD</h1>
-    <p class="sub">ריחוף מעל קו מראה את המחיר ומספר הימים. כל קו אופקי הוא מרחק בנקודות מהפתיחה (00:00) שבו הסתיים ה-HOD (מעל 0) או ה-LOD (מתחת ל-0) בימים דומים שהמשיכו מעבר לשיא/שפל של אותה שעה, מותאם לתנודתיות של היום. בהיר ועבה יותר = יותר ימים הסתיימו שם. הקו המקווקו הלבן הוא השיא/שפל עד עכשיו, עם הסיכוי שהוא כבר הסופי. מחושב מחדש בפתיחה ואחרי כל נר שעה.</p>
+    <p class="sub">ריחוף מעל קו מראה את המחיר ומספר הימים. כל קו אופקי הוא מרחק בנקודות מהפתיחה (00:00) שבו הסתיים ה-HOD (מעל 0) או ה-LOD (מתחת ל-0) בימים דומים שהמשיכו מעבר לשיא/שפל של אותה שעה, מותאם לתנודתיות של היום. בהיר ועבה יותר = יותר ימים הסתיימו שם. הקו המקווקו הלבן הוא השיא/שפל עד עכשיו, עם הסיכוי שהוא כבר הסופי. הקווים האדומים הם הרמות: אם השיא/שפל ממשיך, הוא מגיע אליהן ב-75%, 50% ו-25% מהימים (נבדק על 10 שנים: מכויל). מחושב מחדש בפתיחה ואחרי כל נר שעה.</p>
     <div class="lines-head">
       <label>תאריך: <input type="date" id="lines-date"></label>
       <label>מצב: <select id="lines-hour"></select></label>
@@ -158,6 +158,7 @@ init();
 
 const VIRIDIS = ["#440154", "#3b528b", "#21918c", "#5ec962", "#fde725"];
 let linesTimer = null, followLatest = true, pickedHour;  // until a date is picked, follow the latest day
+const REACH = ["75%", "50%", "25%"], LEVEL_COLOR = "#ff375f";  // levels reached on 75/50/25% of the days that went further
 const pct = p => p == null ? "–" : `${Math.round(p * 100)}%`;
 const hourName = h => h == null ? "לפני הפתיחה" : `אחרי נר ${h}:00`;
 const viridis = t => VIRIDIS[Math.min(VIRIDIS.length - 1, Math.round(t * (VIRIDIS.length - 1)))];
@@ -186,14 +187,17 @@ async function loadLines() {
 function drawLines(data, i) {
   const row = data.lines[i], open = data.candles[0].open;
   document.getElementById("lines-now").innerHTML = [["HOD", "השיא", row.high, row.hod_done], ["LOD", "השפל", row.low, row.lod_done]]
-    .map(([name, word, sofar, done]) => `<span>${name}: ${word} עד עכשיו <b>${fmt(sofar)}</b> · כבר נקבע ב-${pct(done)} מ-${row.n} ימים דומים</span>`).join("");
+    .map(([name, word, sofar, done]) => `<span>${name}: ${word} עד עכשיו <b>${fmt(sofar)}</b> · כבר נקבע ב-${pct(done)} מ-${row.n} ימים דומים</span>`).join("") +
+    [["HOD", row.hod_levels], ["LOD", row.lod_levels]].map(([name, lv]) =>
+      `<span>${name} אם ממשיך: ${lv.map((p, k) => `<b style="font-size:16px">${fmt(p)}</b> (${REACH[k]})`).join(" · ")}</span>`).join("");
 
   // QuantiStat "Price Based" look: points from the 00:00 open, HOD above 0, LOD below.
   // Like the original, levels hit on a single day are left out as noise.
   const heat = row.hod_heat.concat(row.lod_heat).filter(([, c]) => c >= 2).map(([p, c]) => [p - open, c, p]);
   const counts = heat.map(([, c]) => c), least = Math.min(...counts), most = Math.max(...counts);
   const W = 860, H = 460, L = 56, R = 110, T = 36, B = 40;
-  const pts = heat.map(([d]) => d).concat(row.high - open, row.low - open), lo = Math.min(...pts), hi = Math.max(...pts), pad = (hi - lo) * 0.05;
+  const reach = [...row.hod_levels.map((p, k) => [p, k, "HOD"]), ...row.lod_levels.map((p, k) => [p, k, "LOD"])].filter(([p]) => p != null);
+  const pts = heat.map(([d]) => d).concat(row.high - open, row.low - open, reach.map(([p]) => p - open)), lo = Math.min(...pts), hi = Math.max(...pts), pad = (hi - lo) * 0.05;
   const y = d => T + (H - T - B) * (hi + pad - d) / (hi - lo + 2 * pad);
   const step = [5, 10, 20, 25, 50, 100].find(s => (hi - lo) / s <= 8);
   const ticks = [];
@@ -218,6 +222,9 @@ function drawLines(data, i) {
     ${[[row.high, row.hod_done, "HOD"], [row.low, row.lod_done, "LOD"]].map(([p, done, name]) =>
       `<line x1="${L}" x2="${W - R}" y1="${y(p - open)}" y2="${y(p - open)}" stroke="#f2f2f7" stroke-dasharray="6 4"/>
        <text x="${L + 6}" y="${y(p - open) + (name === "HOD" ? -6 : 14)}" style="fill:#f2f2f7">${name} so far ${fmt(p)} · already in: ${pct(done)}</text>`).join("")}
+    ${reach.map(([p, k, name]) =>
+      `<line x1="${L}" x2="${W - R}" y1="${y(p - open)}" y2="${y(p - open)}" stroke="${LEVEL_COLOR}" stroke-width="1.5"/>
+       <text x="${W - R - 6}" y="${y(p - open) - 4}" text-anchor="end" style="fill:${LEVEL_COLOR};paint-order:stroke;stroke:#141414;stroke-width:4px">${name} ${REACH[k]} ${fmt(p)}</text>`).join("")}
     <text transform="translate(14,${(T + H - B) / 2}) rotate(-90)" text-anchor="middle">points</text>${bar}</svg>`;
 }
 
