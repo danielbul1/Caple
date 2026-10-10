@@ -157,7 +157,7 @@ def walk_forward(stats: pd.DataFrame, hi: pd.DataFrame, lo: pd.DataFrame, close:
 
 def use_implied(stats: pd.DataFrame, force_r5: bool = False, closes: pd.Series | None = None) -> tuple[str, pd.Series]:
     """Scale each day by VIX9D's implied daily move instead of its prior 5-day range. Walk-forward
-    on LSE's 2018-2026 (2,089 days) it cut the pinball loss ~2% at the open (paired t -5), less
+    on LSE's 2017-06..2026-10 (2,210 days) it cut the pinball loss ~2% at the open (paired t -5), less
     later, nothing from 12:00 on; VIX1D did no better on 2024-2026 and starts only in 2023.
     Rewrites stats.r5 (the scale column the forecast reads) on the same days; returns the
     yardstick's name and the VIX9D closes (downloaded unless given)."""

@@ -54,12 +54,13 @@ only and is scored against the day (per-day rows in `scorecard.csv`). On 2,089 d
   and their "75%" level is reached on 86% of days (prices rose since 2018); scaled by VIX9D
   22.9/27.4 and calibrated (76/51/27%).
 - Which past days you pick barely matters: same day of month (QuantiStat), same weekday
-  and all days are within noise; all days scaled by VIX9D is best.
+  and all days are within noise of each other once scaled by VIX9D.
 - The bright heatmap lines know nothing about the day: the HOD/LOD lands within 3 points of
-  one of the 3 brightest lines on ~31% of days, and so does another random day's HOD/LOD.
-- Only knowing the day's bias (its real close vs open) helps: pinball 18/22 and the bright
-  lines then beat chance by ~12 points. No rule found that bias in advance (bias.py), so
-  this is the ceiling of a perfect hand-picked bias, not something achievable.
+  one of the 3 brightest lines on ~31% of days, and so does another random day's HOD/LOD
+  (with the bias known too, against another day of the same bias).
+- Only knowing the day's bias (its real close vs open) helps the levels: pinball 18/22. No
+  rule found that bias in advance (bias.py), so this is the ceiling of a perfect hand-picked
+  bias, not something achievable.
 
 ## Live HOD/LOD price heatmap
 

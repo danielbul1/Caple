@@ -55,7 +55,7 @@ def scorecard(stats: pd.DataFrame, methods: dict, start: date = START) -> pd.Dat
             mask = pick(day, past) & (True if scale is None else past[scale].notna().to_numpy())
             unit = 1.0 if scale is None else stats[scale].iloc[i]
             k = 1.0 if scale is None else unit / past[scale][mask].to_numpy()
-            row = {"day": day, "method": name, "n": int(mask.sum()), "unit": unit}
+            row = {"day": day, "method": name, "n": int(mask.sum()), "unit": unit, "bullish": bool(stats.bullish.iloc[i])}
             if row["n"] < 2 or np.isnan(unit):
                 continue
             for side, dist in (("HOD", up), ("LOD", down)):
@@ -73,11 +73,17 @@ def scorecard(stats: pd.DataFrame, methods: dict, start: date = START) -> pd.Dat
 
 def random_hits(result: pd.DataFrame, seed: int = 0) -> pd.Series:
     """Share of each method's bright lines hit by another random scored day's HOD/LOD,
-    moved into that day's units (another day's 40 points on a calm day is more on a wild one)."""
+    moved into that day's units (another day's 40 points on a calm day is more on a wild one).
+    For "bias known" methods the other day has the same bias, or the baseline would only
+    measure the bias, not the lines."""
     rng = np.random.default_rng(seed)
     out = {}
     for name, g in result.groupby("method"):
-        j = rng.permutation(len(g))
+        g = g.reset_index(drop=True)
+        groups = g.groupby("bullish").groups.values() if name.endswith("bias known") else [g.index]
+        j = np.empty(len(g), int)
+        for idx in groups:
+            j[idx] = rng.permutation(idx)
         hits = [np.abs(lines - g[f"{side}_actual"].iloc[jj] / g.unit.iloc[jj] * unit).min() <= TOLERANCE
                 for side in ("HOD", "LOD") for lines, unit, jj in zip(g[f"{side}_lines"], g.unit, j)]
         out[name] = np.mean(hits)
