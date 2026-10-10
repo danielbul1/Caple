@@ -41,9 +41,10 @@ def test_plots_build_like_quantistat():
                           "hod_hour": [19, 0], "lod_hour": [13, 16], "bullish": [True, False]})
     time_fig = qs.plot_time_based(stats)
     assert [ax.get_title() for ax in time_fig.axes] == [
-        "HOD If Bullish Bias", "LOD If Bullish Bias", "HOD If Bearish Bias", "LOD If Bearish Bias"]
+        "HOD If Bullish Bias (n=1)", "LOD If Bullish Bias (n=1)",
+        "HOD If Bearish Bias (n=1)", "LOD If Bearish Bias (n=1)"]
     price_fig = qs.plot_price_based(stats)
-    assert price_fig.axes[0].get_title() == "HOD/LOD Price Based"
+    assert price_fig.axes[0].get_title() == "HOD/LOD Price Based (n=2)"
     assert len(price_fig.axes[0].lines) == 4  # one horizontal level per distinct distance
 
 
@@ -51,3 +52,28 @@ def test_time_bars_sit_on_their_clock_hour():
     stats = pd.DataFrame({"hod_hour": [9, 10, 10], "lod_hour": [0, 23, 23], "bullish": [True] * 3})
     hod = qs.plot_time_based(stats).axes[0]
     assert {(p.get_x(), p.get_height()) for p in hod.patches if p.get_height()} == {(9, 1), (10, 2)}
+
+
+def test_daily_stats_drops_days_with_a_contract_roll_jump_but_keeps_the_1800_reopen():
+    df = candles([
+        ("2026-11-10 00:00", 100, 101, 99, 100),
+        ("2026-11-10 01:00", 160, 161, 159, 160),  # Yahoo flips to the next contract mid-day
+        ("2026-11-11 00:00", 100, 101, 99, 100),
+        ("2026-11-11 16:00", 100, 101, 99, 100),
+        ("2026-11-11 18:00", 140, 141, 139, 140),  # real gap after the 17:00 halt
+    ])
+    assert list(qs.daily_stats(df).index) == [date(2026, 11, 11)]
+
+
+def test_titles_show_sample_size():
+    stats = pd.DataFrame({"open": [100.0], "high": [110.0], "low": [90.0],
+                          "hod_hour": [1], "lod_hour": [2], "bullish": [True]})
+    assert qs.plot_time_based(stats).axes[0].get_title() == "HOD If Bullish Bias (n=1)"
+    assert qs.plot_price_based(stats).axes[0].get_title() == "HOD/LOD Price Based (n=1)"
+
+
+def test_daily_stats_drops_the_quarterly_expiry_week():
+    # Sep 2025 expires Fri 19th: Yahoo mixes contracts inside candles all week (15th-19th).
+    rows = [(f"2025-09-{day} 00:00", 100, 101, 99, 100) for day in (12, 15, 19, 22)]
+    rows += [("2025-10-16 00:00", 100, 101, 99, 100)]  # not a quarterly month
+    assert [d.day for d in qs.daily_stats(candles(rows)).index] == [12, 22, 16]

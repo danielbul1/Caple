@@ -24,10 +24,26 @@ from matplotlib.colors import Normalize
 from app import fetch_candles, today_market
 
 HOURS = range(24)
+# Yahoo's continuous ES=F flips between contracts around a roll, which shows up as a
+# jump between two candles of the same day. Real hour-to-hour gaps are a few points;
+# only the 18:00 reopen after the daily halt can gap for real.
+MAX_GAP_POINTS = 25
+
+
+def in_expiry_week(d: date) -> bool:
+    """Monday to third Friday of Mar/Jun/Sep/Dec, when Yahoo also mixes the two
+    contracts inside single candles, which the gap check can't see."""
+    third_friday = 15 + (4 - date(d.year, d.month, 15).weekday()) % 7
+    return d.month % 3 == 0 and third_friday - 4 <= d.day <= third_friday
 
 
 def daily_stats(candles: pd.DataFrame) -> pd.DataFrame:
-    """One row per calendar day that opens at 00:00 (drops Sunday's 18:00 session start)."""
+    """One row per calendar day that opens at 00:00 (drops Sunday's 18:00 session start),
+    outside expiry weeks and without a contract-roll jump."""
+    same_day = candles.index.date[1:] == candles.index.date[:-1]
+    jumps = (candles.Open - candles.Close.shift()).abs().iloc[1:] > MAX_GAP_POINTS
+    bad = jumps & same_day & (candles.index[1:].hour != 18)
+    rolled_days = set(bad[bad].index.date)
     days = candles.groupby(candles.index.date)
     stats = pd.DataFrame({
         "open": days.Open.first(),
@@ -39,7 +55,8 @@ def daily_stats(candles: pd.DataFrame) -> pd.DataFrame:
         "first_hour": days.apply(lambda d: d.index[0].hour),
     })
     stats["bullish"] = stats.close > stats.open
-    return stats[stats.first_hour == 0].drop(columns="first_hour")
+    keep = (stats.first_hour == 0) & ~stats.index.isin(rolled_days) & ~stats.index.map(in_expiry_week)
+    return stats[keep].drop(columns="first_hour")
 
 
 def same_day_of_month(stats: pd.DataFrame, target: date) -> pd.DataFrame:
@@ -59,7 +76,7 @@ def plot_time_based(stats: pd.DataFrame):
         days = stats[stats.bullish == bullish]
         for ax, kind in zip(axes[row], ["HOD", "LOD"]):
             ax.hist(days[f"{kind.lower()}_hour"], bins=range(25), color=color, edgecolor="white")
-            ax.set_title(f"{kind} If {name} Bias")
+            ax.set_title(f"{kind} If {name} Bias (n={len(days)})")
             ax.set_xlabel("Time")
             ax.set_ylabel("Frequency")
             ax.set_xticks(HOURS, [f"{h}:00" for h in HOURS], rotation=45)
@@ -75,7 +92,7 @@ def plot_price_based(stats: pd.DataFrame):
     for points, count in counts.items():
         ax.axhline(points, color=plt.cm.viridis(norm(count)), linewidth=2 * count)
     fig.colorbar(ScalarMappable(norm, "viridis"), ax=ax, label="heatmap")
-    ax.set_title("HOD/LOD Price Based")
+    ax.set_title(f"HOD/LOD Price Based (n={len(stats)})")
     ax.set_ylabel("points")
     ax.grid(alpha=0.2)
     return fig
