@@ -14,3 +14,12 @@ def test_cache_round_trips_across_a_daylight_saving_change(tmp_path):
                        for ts in ("2025-11-01 12:00:00", "2025-11-03 12:00:00")])  # EDT, then EST
     df.to_csv(tmp_path / "c.csv")
     assert lse.read_cache(tmp_path / "c.csv").index.equals(df.index)
+
+
+def test_event_labels_use_the_new_york_date_and_prefer_fomc():
+    rows = [{"event": "Fed Interest Rate Decision", "datetime": "2026-12-09 19:00:00"},
+            {"event": "Core Inflation Rate MoM", "datetime": "2026-12-09 13:30:00"},
+            {"event": "Core Inflation Rate MoM NOV", "datetime": "2026-11-13 01:30:00"},  # 20:30 NY on the 12th
+            {"event": "Core Inflation Rate MoM Final DEC", "datetime": "2024-02-09 14:30:00"}]  # seasonal revision
+    from datetime import date
+    assert lse.event_labels(rows) == {date(2026, 12, 9): "FOMC", date(2026, 11, 12): "CPI"}

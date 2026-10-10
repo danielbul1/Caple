@@ -1,5 +1,7 @@
 from datetime import date
 
+import numpy as np
+
 import pandas as pd
 
 import levels
@@ -40,3 +42,27 @@ def test_forecast_turns_history_into_todays_odds_and_prices():
     # If it goes further: from the days that did (up 1 and 2 ranges), reached on 75% / 50% / 25% of them.
     assert f["HOD"]["levels"] == [212.5, 215.0, 217.5]
     assert f["LOD"]["levels"] == [180.0, 180.0, 180.0]
+
+
+def test_nothing_after_the_hour_changes_what_is_known_at_that_hour():
+    rows = [("2026-11-10 00:00", 100, 105, 99, 101), ("2026-11-10 01:00", 101, 103, 95, 96)]
+    later = [("2026-11-10 05:00", 96, 140, 60, 70)]
+    a, b = levels.through_hour(candles(rows)), levels.through_hour(candles(rows + later))
+    day = date(2026, 11, 10)
+    for h in (0, 1, 4):
+        assert [x.loc[day, h] for x in a] == [x.loc[day, h] for x in b]
+        assert levels.upper_half(*a, h).loc[day] == levels.upper_half(*b, h).loc[day]
+
+
+def test_pinball_scores_the_25_50_75_quantile_levels():
+    # Past extras 0, 1, 2 ranges: quantiles 0.5 / 1 / 1.5 -> levels 105 / 110 / 115 with a 10-point range.
+    past = np.array([0.0, 1.0, 2.0])
+    # HOD ends at 110: losses 0.25*(110-105), 0, 0.25*(115-110) -> 1.25 + 0 + 1.25
+    assert levels.pinball(110.0, past, 100.0, 1, 10.0) == 2.5
+    # LOD mirrored: low 90 from 100, same distances
+    assert levels.pinball(90.0, past, 100.0, -1, 10.0) == 2.5
+
+
+def test_odds_when_no_similar_day_went_further():
+    done, lvls = levels.odds(np.array([0.0, 0.0]), 100.0, 1, 10.0)
+    assert done == 1.0 and all(np.isnan(lvls))
