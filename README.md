@@ -188,8 +188,20 @@ guessing bullish, so the charts still take the bias as your input.
 tendencies (10/5/2-year average path from Yahoo daily ES since 2000) and prints
 that day's seasonal bias; bias.py tests it too, and it does not beat always
 bullish either (2022+: 50.9% when all three windows agree vs 49.7%).
-`python bias.py daily` tests a 2nd-order Markov chain on day direction (the
-"markov-process" idea) on 6,509 Yahoo daily sessions since 2000, split 2016: after
-every two-day state the next day was more often bullish, so the chain reduces to
-"always bullish" and adds nothing.
+`python forecast_bias.py` tests the Discord "statistical data" ideas (markov-process,
+sarimax, bias-forecasting) walk-forward on 6,560 Yahoo daily sessions since 2000: each
+model is refit every January on earlier years only and scored on 2016-2026 (2,709
+sessions) by Brier score against the base rate. None passes (mean edge > 2 SE):
+
+| model | Brier edge (x1e-4) | 2 SE | accuracy | always bullish |
+|---|---|---|---|---|
+| Markov chain, last 1/2/3 days | +2.0 / +4.8 / +1.7 | 5.5 / 8.1 / 9.8 | 54.6-54.8% | 54.6% |
+| Markov, last 2 days + big/small range | +4.9 | 12.4 | 55.0% | 54.6% |
+| SARIMAX(1,0,1)x(1,0,1,5) + VIX change, range | -19.0 (worse) | 16.4 | 53.5% | 54.6% |
+| logistic regression, 11 features | -2.7 | 8.8 | 54.7% | 54.6% |
+| gradient-boosted trees, same features | -2.4 | 13.7 | 54.3% | 54.6% |
+
+The Markov chains mostly reduce to "always bullish" (bullish was the likelier side after
+almost every state), and the best edge, 0.0005 of Brier, is noise in both halves (2016-2020,
+2021-2026). Daily direction stays unpredictable, so the bias stays your input.
 Tests: `pip install pytest && pytest`.
