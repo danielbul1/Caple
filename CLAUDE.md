@@ -1,5 +1,8 @@
 # Working rules
 
-- Every coding task follows the `minimal-code` skill.
-- Bigger tasks run through the `build` skill, which chains `plan-first` -> `tdd` -> `debug` -> `verify-done` on its own.
-- Any bug or failing test: use `debug`. Before saying "done": use `verify-done`.
+Skills in `.claude/skills/` combine Superpowers' workflow with Karpathy's guidelines. Use them without being asked:
+
+- Any request to build, add, change or fix something bigger than a one-liner → run the `build` skill end to end, autonomously (it chains `plan-first` → `tdd` → `debug` → `review` → `verify-done` → commit & push).
+- Every line of code follows `minimal-code`.
+- Any bug or failing test → `debug`. Before saying "done" → `verify-done`.
+- Don't stop to ask unless truly blocked (missing secret/access, a product decision with no sensible default, or an irreversible outward action). Otherwise decide, record the assumption, and continue.

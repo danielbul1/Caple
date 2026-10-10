@@ -5,10 +5,10 @@ description: Prove work is finished before claiming it. Use right before saying 
 
 # Verify Before Done
 
-Evidence before claims.
+**Evidence before claims.** *Why:* "it should work" is the most common lie in software.
 
-1. Name the command that proves the claim (tests, build, lint, running the app and hitting the changed path).
-2. Run it fresh, now - not from memory of an earlier run.
-3. Read the actual output: exit code, failures, warnings.
-4. Report what it shows. If something failed or was skipped, say so plainly.
-5. Re-read your own diff once: leftover debug code, unrelated changes, missing files.
+1. Name the commands that prove the claim: full test suite, build/lint/typecheck if the repo has them, and run the app and exercise the changed path if it's runnable.
+2. Run them fresh, now — not from memory of an earlier run.
+3. Read the actual output: exit codes, failures, warnings.
+4. Re-read the final diff: leftover debug code, unrelated changes, missing files, secrets.
+5. Report exactly what the output shows. Anything failed, skipped or unverifiable gets said plainly.

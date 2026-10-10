@@ -1,11 +1,21 @@
 ---
 name: plan-first
-description: Clarify and plan before building anything non-trivial - a new feature, a new project, or a change touching several files. Use before writing code when the request is vague or bigger than a quick fix.
+description: Understand the goal and write a short verifiable plan before building anything non-trivial - a new feature, a new project, or a change touching several files. Combines Superpowers brainstorming + writing-plans, run autonomously.
 ---
 
 # Plan First
 
-1. **Understand.** Read the relevant code. Ask the few questions whose answers change what you build (one at a time, multiple choice when possible). Don't ask what you can find out yourself.
-2. **Pick one approach.** Briefly name the alternatives, recommend one, and say why. Default to the simplest that meets the goal (YAGNI).
-3. **Write a short plan.** A numbered list of small steps; each names the files it touches and how you'll verify it. Keep it to what fits on a screen.
-4. **Get a yes, then build** (when run inside `build`, don't wait - state the plan and continue) step by step, verifying each step before the next. If reality contradicts the plan, stop and update it instead of improvising.
+## A. Understand (brainstorm with yourself)
+1. Read the relevant code, README, configs and recent commits. Answer your own questions from them before considering asking the user.
+2. Write the goal in one sentence and the success criteria as checks you can run.
+3. List 2-3 possible approaches in one line each; choose the simplest that meets the goal (YAGNI) and say why in one line.
+4. Record assumptions you made where the request was silent.
+
+*Why:* a design decided in 2 minutes up front saves hours of rework; writing assumptions down makes them reviewable instead of hidden.
+
+## B. Plan
+5. Break the work into small steps (each a few minutes of work, independently checkable). For each: what changes, which files, how it's verified.
+6. Order by dependency; mark steps that are independent (they can run in parallel).
+7. Put the steps in the task list. Keep the whole plan to one screen.
+
+Then start building immediately — don't wait for approval. If reality contradicts the plan, stop, update the plan, then continue; don't improvise around it.
