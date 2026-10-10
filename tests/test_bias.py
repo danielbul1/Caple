@@ -38,3 +38,13 @@ def test_evaluate_freezes_direction_on_discovery_and_scores_out_of_sample():
     assert table.loc["inverse", "flipped"] == True
     assert table.loc["inverse", "oos_accuracy"] == 1.0  # flipped, it is always right
     assert table.loc["coin", "oos_accuracy"] == 0.5
+
+
+def test_markov_rules_fire_only_in_their_two_day_state():
+    idx = pd.date_range("2026-11-02", periods=4).date
+    stats = pd.DataFrame([day(1, 2, 0, 2), day(2, 3, 0, 1), day(1, 2, 0, 0.5), day(1, 1, 1, 1)], index=idx)
+    r = bias.markov_rules(stats)
+    assert list(r.columns) == ["markov_bear_bear", "markov_bear_bull", "markov_bull_bear", "markov_bull_bull"]
+    assert r.iloc[:2].isna().all().all()            # no two-day history yet
+    assert r.iloc[2].markov_bull_bear == 1.0 and r.iloc[2].drop("markov_bull_bear").isna().all()
+    assert r.iloc[3].markov_bear_bear == 1.0 and r.iloc[3].drop("markov_bear_bear").isna().all()

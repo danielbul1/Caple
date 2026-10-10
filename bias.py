@@ -13,6 +13,7 @@ literature:
 - turn_of_month: last weekday of a month or the first three weekdays (calls bullish)
 - seasonal_10y/5y/2y/agree: the market-bulls.com seasonal tendency the video reads
   (see seasonal.py); "agree" calls only when all three windows point the same way
+- markov_*: 2nd-order Markov chain on direction, one rule per state of the last two days
 
 Pre-registered gate: each rule's direction is fixed on 2016-2021 (flipped if it was
 right less than half the time) and then scored once on 2022 onward. A rule passes
@@ -24,15 +25,22 @@ None beat "always bullish" (51.9% right out of sample); the best edges were with
 noise and mostly negative. "Yesterday" means the previous kept day, so a day after a
 dropped expiry week compares with the week before; that touches few days.
 
-Run: LSE_API_KEY=... python bias.py
+Markov chain on Yahoo daily ES=F sessions (18:00-17:00), 2000-09 .. 2026-10 (6,509 days,
+split 2016): after every two-day state (bear-bear, bear-bull, bull-bear, bull-bull) the
+next session was more often bullish, so the chain collapses to "always bullish": edge 0.
+
+Run: LSE_API_KEY=... python bias.py      (python bias.py daily: Markov chain on Yahoo daily)
 """
 
+import sys
 from datetime import date, timedelta
 
 import numpy as np
 import pandas as pd
+import yfinance as yf
 
 import seasonal
+from app import SYMBOL
 from quantistat import daily_stats, load_candles
 
 SPLIT = date(2022, 1, 1)
@@ -63,6 +71,22 @@ def rules(stats: pd.DataFrame, globex: pd.Series) -> pd.DataFrame:
     })
 
 
+def markov_rules(stats: pd.DataFrame) -> pd.DataFrame:
+    """2nd-order Markov chain on day direction: one rule per state of the last two days,
+    calling only in that state; evaluate() then fixes each state's next-day side."""
+    name = lambda b: "bull" if b else "bear"
+    p, p2 = stats.bullish.shift(1), stats.bullish.shift(2)
+    return pd.DataFrame({f"markov_{name(a)}_{name(b)}": pd.Series(np.nan, index=stats.index).mask((p2 == a) & (p == b), 1.0)
+                         for a in (False, True) for b in (False, True)})
+
+
+def daily_session_stats() -> pd.DataFrame:
+    """Yahoo daily ES=F since 2000: the Globex session's open to close, for a long sample."""
+    df = yf.download(SYMBOL, start="2000-01-01", interval="1d", progress=False, auto_adjust=False,
+                     multi_level_index=False)
+    return pd.DataFrame({"bullish": (df.Close > df.Open).values}, index=df.index.date)[(df.Close != df.Open).values]
+
+
 def evaluate(rules: pd.DataFrame, bullish: pd.Series, split: date = SPLIT) -> pd.DataFrame:
     rows = []
     disc_days = bullish.index < split
@@ -87,11 +111,17 @@ def globex_opens(candles: pd.DataFrame) -> pd.Series:
 
 
 if __name__ == "__main__":
+    if sys.argv[1:] == ["daily"]:
+        stats = daily_session_stats()
+        print(f"{len(stats)} sessions {stats.index[0]} .. {stats.index[-1]}, split 2016-01-01, "
+              f"bullish {stats.bullish.mean():.1%}\n")
+        print(evaluate(markov_rules(stats), stats.bullish, split=date(2016, 1, 1)).round(3).to_string(index=False))
+        sys.exit()
     candles = load_candles()
     stats = daily_stats(candles)
     globex = globex_opens(candles)
     globex = globex[~globex.index.duplicated()]
-    calls = rules(stats, globex).join(seasonal.rules(seasonal.by_date(seasonal.daily_changes()), stats.index))
+    calls = rules(stats, globex).join(markov_rules(stats)).join(seasonal.rules(seasonal.by_date(seasonal.daily_changes()), stats.index))
     table = evaluate(calls, stats.bullish)
     print(f"{len(stats)} days {stats.index[0]} .. {stats.index[-1]}, split {SPLIT}, "
           f"bullish {stats.bullish.mean():.1%}\n")

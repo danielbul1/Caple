@@ -188,4 +188,8 @@ guessing bullish, so the charts still take the bias as your input.
 tendencies (10/5/2-year average path from Yahoo daily ES since 2000) and prints
 that day's seasonal bias; bias.py tests it too, and it does not beat always
 bullish either (2022+: 50.9% when all three windows agree vs 49.7%).
+`python bias.py daily` tests a 2nd-order Markov chain on day direction (the
+"markov-process" idea) on 6,509 Yahoo daily sessions since 2000, split 2016: after
+every two-day state the next day was more often bullish, so the chain reduces to
+"always bullish" and adds nothing.
 Tests: `pip install pytest && pytest`.
