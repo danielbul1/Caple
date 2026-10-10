@@ -317,7 +317,7 @@ if __name__ == "__main__":
     print(f"{target} {kind}open {open_price:.2f}, expected range {today_range:.1f}, {when}  ({f['n']} similar past days)")
     for side in ("HOD", "LOD"):
         lv = " / ".join(f"{x:.2f}" for x in f[side]["levels"])
-        print(f"  {side}: already in on {f[side]['done']:.0%} of similar days; "
+        print(f"  {side}: chance it is already in {f[side]["done"]:.0%}; "
               f"if it goes further: {lv} (reached on 75% / 50% / 25% of those); best guess {f[side]['line']:.2f}")
     for side in ("HOD", "LOD"):
         now = f["high"] if side == "HOD" else f["low"]
