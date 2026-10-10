@@ -101,15 +101,44 @@ Backfilled on 2026-10-10 with every scored day of the two years before (2024-10-
 | hour | HOD call right | LOD call right | HOD in band | LOD in band | HOD off | LOD off |
 |---|---|---|---|---|---|---|
 | open | 100% | 100% | 52% | 50% | 24.6 | 28.2 |
-| 2:00 | 87% | 83% | 52% | 50% | 23.0 | 26.7 |
-| 5:00 | 79% | 73% | 50% | 51% | 20.3 | 23.7 |
-| 9:00 | 74% | 68% | 50% | 55% | 13.8 | 16.4 |
-| 12:00 | 80% | 76% | 55% | 51% | 7.0 | 7.7 |
-| 15:00 | 79% | 87% | 51% | 45% | 2.8 | 2.8 |
+| 2:00 | 87% | 83% | 53% | 50% | 23.0 | 26.8 |
+| 5:00 | 80% | 75% | 50% | 51% | 20.2 | 23.6 |
+| 9:00 | 74% | 72% | 53% | 55% | 13.7 | 16.1 |
+| 12:00 | 81% | 74% | 55% | 51% | 6.9 | 7.8 |
+| 15:00 | 82% | 86% | 51% | 44% | 2.7 | 2.8 |
 
 "In band" should be ~50% if the levels are honest, and it is. "Off" is points between the
 best-guess line and the real HOD/LOD. At the open, "call right" only says the high/low was
 still to come, which is almost always true, so it carries no information there.
+
+## Why the percentages look low, and what is the best possible
+
+- "In band" ~50% is the target, not a failure: the 75%-25% band is built to catch half the
+  days. Any band can score higher by being wider, which says nothing. What makes a forecast
+  better is a narrower band at the same honest rate (lower pinball / points off).
+- "Call right" (is the HOD/LOD already in?) is close to its ceiling. If ES were a pure random
+  walk with exactly known volatility, the best possible call (reflection principle, with ES's
+  hour-by-hour share of the day's variance) would be right on 78/73% (HOD/LOD) of days at 9:00
+  and 77/73% at 12:00 (2018-2026). Walk-forward we get 72-74/69-71% at 9:00 and 77-79/75-77% at
+  12:00. Most of what is left is the rest of the day's random path, which no model sees; the
+  small edge over a random walk at 12:00 is what real intraday behaviour adds.
+- What others do, tested walk-forward (models picked on 2018-2021 in a separate bake-off): the
+  analog family wins. k-NN analogs (the Analog Ensemble of weather forecasting) on points below
+  the high / above the low so far, blended half and half with the fifth-of-range days, is what
+  levels.py now uses. Against the fifths alone (`python levels.py backtest`, 2,210 days):
+
+  | | 2:00 | 5:00 | 9:00 | 12:00 | 15:00 |
+  |---|---|---|---|---|---|
+  | "already in" log loss (HOD/LOD), 2017-2021 | -2.6/-1.4% | -0.7/-0.9% | -0.9/-1.1% | -1.1/-0.8% | -0.8/-1.3% |
+  | "already in" log loss (HOD/LOD), 2022-2026 | -1.5/-1.1% | -1.8/-2.2% | -1.5/-2.2% | -3.8/-4.4% | -3.6/-3.5% |
+  | calls right (HOD/LOD), 2017-2021 | 88/82% = | 79/69% (+1/+2) | 74/71% (+1/+1) | 77/77% (0/+1) | 78/85% (-2/-2) |
+  | calls right (HOD/LOD), 2022-2026 | 88/86% = | 79/76% (+1/+1) | 72/69% (0/+2) | 79/75% (+1/0) | 82/85% (+3/0) |
+  | pinball (HOD/LOD), 2022-2026 | +0.1/-0.1% | -0.4/-0.4% | -0.6/-0.5% | -0.6/-0.8% | -1.6/-1.5% |
+
+  On 2017-2021 the pinball barely moved (-0.5% to +0.6%). LightGBM quantile models (hour, distances
+  to the high/low, range so far, prior range, realized/implied vol, weekday, FOMC/CPI) were no
+  better alone and, added to the blend, only helped at 15:00, so they were left out; adding
+  range so far or realized/implied vol to the k-NN, or k=300, made it worse.
 
 ## Live HOD/LOD price heatmap
 

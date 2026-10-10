@@ -113,3 +113,51 @@ def test_heat_counts_where_the_days_that_went_further_ended():
     assert levels.heat(extra, 100.0, 1, 10.0) == [(110.0, 2), (130.0, 1)]
     assert levels.heat(extra, 100.0, -1, 10.0) == [(70.0, 1), (90.0, 2)]  # LOD: below the low so far
     assert levels.heat(extra, 100.0, 1, np.nan) == []
+
+
+def test_weighted_quantile_with_equal_weights_is_numpys_and_ignores_zero_weights():
+    v = np.array([3.0, 1.0, 4.0, 1.5, 9.0])
+    q = [0.25, 0.5, 0.75]
+    assert np.allclose(levels.wquantile(v, np.ones(5), q), np.quantile(v, q))
+    assert np.allclose(levels.wquantile(np.append(v, 99.0), np.append(np.ones(5), 0.0), q), np.quantile(v, q))
+    assert levels.wquantile(np.array([7.0]), np.array([1.0]), 0.5) == 7.0
+
+
+def test_similar_days_weigh_todays_fifth_and_the_nearest_days_equally(monkeypatch):
+    monkeypatch.setattr(levels, "K_NEAREST", 2)
+    where = np.array([0, 0, 1, 1, 1])
+    near = np.array([[0.0, 0.0], [0.1, 0.0], [0.0, 1.0], [5.0, 5.0], [0.05, 0.0]])  # (below high, above low) in yardsticks
+    w = levels.similar(where, near, today_where=1, today_near=np.array([0.0, 0.0]))
+    # fifth 1: days 2, 3, 4 get 1/3 each; the 2 nearest to (0, 0): days 0 and 4 get 1/2 each
+    assert np.allclose(w, [1 / 2, 0, 1 / 3, 1 / 3, 1 / 3 + 1 / 2])
+
+
+def test_odds_count_each_past_day_by_its_weight():
+    done, lvls = levels.odds(np.array([0.0, 1.0, 2.0]), 100.0, 1, 10.0, np.array([2.0, 1.0, 1.0]))
+    assert done == 0.5
+    assert lvls == levels.odds(np.array([1.0, 2.0]), 100.0, 1, 10.0)[1]
+
+
+def test_weighted_quantile_uses_every_weight_and_is_symmetric():
+    assert levels.wquantile(np.array([0.0, 1.0, 2.0]), np.array([1.0, 1.0, 10.0]), 0.5) > 1.0  # pulled toward the heavy 2
+    v, w = np.array([0.0, 1.0, 2.0]), np.array([10.0, 1.0, 1.0])
+    assert np.isclose(levels.wquantile(v, w, 0.5), -levels.wquantile(-v, w, 0.5))
+
+
+def test_walk_forward_and_the_live_view_give_the_same_forecast_for_a_day():
+    rng = np.random.default_rng(1)
+    idx = pd.date_range("2025-01-01", periods=24 * 330, freq="h", tz="America/New_York")
+    close = 6000 + rng.normal(0, 3, len(idx)).cumsum()
+    c = pd.DataFrame({"Open": close - rng.normal(0, 1, len(idx)), "Close": close}, index=idx)
+    c["High"] = c[["Open", "Close"]].max(axis=1) + rng.uniform(0, 4, len(idx))
+    c["Low"] = c[["Open", "Close"]].min(axis=1) - rng.uniform(0, 4, len(idx))
+    stats = levels.daily_stats(c).dropna()
+    target = stats.index[-1]
+    wf = levels.walk_forward(stats, *levels.through_hour(c), warmup=len(stats) - 1).set_index("hour")
+    live = levels.day_lines(c, stats, target, stats.r5.iloc[-1])
+    for row in live:
+        if row["hour"] not in levels.CHECKPOINTS:
+            continue
+        w = wf.loc["open" if row["hour"] is None else f"{row['hour']}:00"]
+        assert np.isclose(row["HOD"]["done"], w.HOD_done_pred) and np.isclose(row["LOD"]["done"], w.LOD_done_pred)
+        assert np.isclose(abs(stats.high.iloc[-1] - row["HOD"]["line"]), w.HOD_miss)

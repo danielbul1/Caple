@@ -3,13 +3,18 @@
 Before the open only the open is known; after each hourly candle the day's high
 and low so far are known too. For every past day we measure how much further the
 high still rose and the low still fell after that point, in units of that day's
-VIX9D implied daily move (so calm and wild days compare), using only past days where
-price at that hour sat in the same fifth of the range so far as today (halves cut the
-miss ~10% at 9:00; fifths, picked on 2018-2021, cut the pinball loss another ~4% at 9:00
-and 12:00 on 2022-2026, paired t -4.6 and -5.0, and changed nothing before 5:00). Today's levels are the high and low so far plus those extras times
-today's yardstick:
+VIX9D implied daily move (so calm and wild days compare). Similar past days get the weight:
+half on the days where price at that hour sat in the same fifth of the range so far as today
+(halves cut the miss ~10% at 9:00; fifths, picked on 2018-2021, cut the pinball loss another
+~4% at 9:00 and 12:00 on 2022-2026, paired t -4.6 and -5.0, and changed nothing before 5:00),
+half on the K_NEAREST days closest in distance from the high and low so far (k-NN analogs;
+all of it on the k-NN days if no past day shares today's fifth). Walk-forward vs the fifths
+alone it cut the log loss of "already in" at every checkpoint from 2:00 to 15:00 on both
+2017-2021 and 2022-2026 (0.7-4.4%), mostly with more calls right, and on 2022-2026 the
+pinball loss 0.4-1.6% (see README). Today's levels are the high and low so far plus those extras times today's
+yardstick:
 
-- done: share of past days whose HOD (or LOD) was already in at this point
+- done: (weighted) share of past days whose HOD (or LOD) was already in at this point
 - levels: if it goes further, the prices it reached on 75% / 50% / 25% of the past
   days that did go further (levels over all days would collapse onto the current
   high/low once most days are done, and be "reached" trivially)
@@ -38,6 +43,7 @@ QUANTILES = [0.25, 0.5, 0.75]
 # share of a normal range already used (no gain), and forecasting FOMC/CPI days from past
 # FOMC/CPI days only (better on 2022+, worse on 2017-2021), so events only get a warning.
 EVENT_SIZE = {"FOMC": 1.3, "CPI": 1.2}
+K_NEAREST = 150  # 300 was worse on 2018-2021 from 9:00 on
 
 
 def through_hour(candles: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -57,11 +63,39 @@ def position(hi: pd.DataFrame, lo: pd.DataFrame, close: pd.DataFrame, hour: int,
     return (where * bins).clip(upper=bins - 1).astype(int)
 
 
-def pinball(actual: float, past: np.ndarray, now: float, sign: int, today_range: float) -> float:
-    """Quantile (pinball) loss of the 25/50/75% levels over all past days: one proper score
-    for the whole forecast, lower is better."""
+def wquantile(values: np.ndarray, weights: np.ndarray, q) -> np.ndarray:
+    """Weighted quantile; equal weights give np.quantile's (linear) answer, zero weights don't count."""
+    keep = weights > 0
+    order = np.argsort(values[keep])
+    v, w = values[keep][order], weights[keep][order]
+    if len(v) == 1:
+        return np.full(np.shape(q), v[0])
+    mid = np.cumsum(w) - w / 2 - w[0] / 2  # each value at the middle of its weight
+    return np.interp(q, mid / mid[-1], v)
+
+
+def similar(where: np.ndarray, near: np.ndarray, today_where: int, today_near: np.ndarray) -> np.ndarray:
+    """Weight of each past day: half shared by the days in today's fifth of the range so far,
+    half by the K_NEAREST days closest to today in (points below the high, points above the
+    low) so far, in yardsticks and standardized."""
+    same = where == today_where
+    dist = (((near - today_near) / (near.std(axis=0) + 1e-9)) ** 2).sum(axis=1)
+    nearest = np.zeros(len(near), bool)
+    nearest[np.argsort(dist, kind="stable")[:K_NEAREST]] = True
+    return same / max(same.sum(), 1) + nearest / nearest.sum()
+
+
+def nearness(hi_now, lo_now, close_now, yardstick) -> np.ndarray:
+    """(points below the high so far, points above the low so far) in yardsticks."""
+    return np.column_stack([(hi_now - close_now) / yardstick, (close_now - lo_now) / yardstick])
+
+
+def pinball(actual: float, past: np.ndarray, now: float, sign: int, today_range: float, w: np.ndarray | None = None) -> float:
+    """Quantile (pinball) loss of the 25/50/75% levels over all (weighted) past days: one proper
+    score for the whole forecast, lower is better."""
     y = sign * (actual - now) / today_range
-    return sum(max(q * (y - x), (q - 1) * (y - x)) for q, x in zip(QUANTILES, np.quantile(past, QUANTILES))) * today_range
+    w = np.ones(len(past)) if w is None else w
+    return sum(max(q * (y - x), (q - 1) * (y - x)) for q, x in zip(QUANTILES, wquantile(past, w, QUANTILES))) * today_range
 
 
 def extras(stats: pd.DataFrame, hi: pd.DataFrame, lo: pd.DataFrame, hour: int | None) -> pd.DataFrame:
@@ -71,12 +105,16 @@ def extras(stats: pd.DataFrame, hi: pd.DataFrame, lo: pd.DataFrame, hour: int | 
     return pd.DataFrame({"up": (stats.high - hi_now) / stats.r5, "down": (lo_now - stats.low) / stats.r5})
 
 
-def odds(extra: np.ndarray, now: float, sign: int, today_range: float) -> tuple[float, list[float]]:
-    """(share already done, levels reached on 75/50/25% of the days that went further)."""
-    more = extra[extra > 1e-9]
-    if len(more) == 0:
+def odds(extra: np.ndarray, now: float, sign: int, today_range: float,
+         w: np.ndarray | None = None) -> tuple[float, list[float]]:
+    """(share already done, levels reached on 75/50/25% of the days that went further), each past
+    day counted by its weight."""
+    w = np.ones(len(extra)) if w is None else w
+    more = (extra > 1e-9) & (w > 0)
+    if not more.any():
         return 1.0, [np.nan] * len(REACH)
-    return 1 - len(more) / len(extra), [now + sign * np.quantile(more, 1 - p) * today_range for p in REACH]
+    return (1 - w[more].sum() / w.sum(),
+            [now + sign * wquantile(extra[more], w[more], 1 - p) * today_range for p in REACH])
 
 
 def heat(extra: np.ndarray, now: float, sign: int, today_range: float, width: float = 2.0) -> list[tuple[float, int]]:
@@ -88,12 +126,15 @@ def heat(extra: np.ndarray, now: float, sign: int, today_range: float, width: fl
     return [(float(p), int(c)) for p, c in zip(*np.unique(prices, return_counts=True))]
 
 
-def forecast(ex: pd.DataFrame, high_so_far: float, low_so_far: float, today_range: float) -> dict:
+def forecast(ex: pd.DataFrame, high_so_far: float, low_so_far: float, today_range: float,
+             w: np.ndarray | None = None) -> dict:
     """Per side: done, levels, and line = the median final HOD/LOD over all similar days (the
     best single guess; it sits on the high/low so far once most similar days were done)."""
-    ex = ex.dropna()
-    return {side: dict(zip(["done", "levels"], odds(ex[col].to_numpy(), now, sign, today_range)),
-                       line=now + sign * np.median(ex[col]) * today_range,
+    w = np.ones(len(ex)) if w is None else w
+    keep = ex.notna().all(axis=1).to_numpy() & (w > 0)
+    ex, w = ex[keep], w[keep]
+    return {side: dict(zip(["done", "levels"], odds(ex[col].to_numpy(), now, sign, today_range, w)),
+                       line=now + sign * wquantile(ex[col].to_numpy(), w, 0.5) * today_range,
                        heat=heat(ex[col].to_numpy(), now, sign, today_range))
             for side, col, now, sign in [("HOD", "up", high_so_far, 1), ("LOD", "down", low_so_far, -1)]}
 
@@ -106,13 +147,17 @@ def day_lines(candles: pd.DataFrame, stats: pd.DataFrame, target: date, today_ra
     out = []
     for hour in [None, *range(day.index[-1].hour + 1)]:  # hours without a candle (17:00 halt) carry on
         history = stats[[d < target for d in stats.index]]
+        ex, w = extras(history, hi, lo, hour), np.ones(len(history))
         if hour is not None:
             where = position(hi, lo, close, hour)
-            history = history[where.reindex(history.index) == where[target]]
+            near = nearness(*(x[hour].reindex(history.index) for x in (hi, lo, close)), history.r5)
+            ok = ~np.isnan(near).any(axis=1) & ex.notna().all(axis=1).to_numpy()  # same days as walk_forward
+            ex, w = ex[ok], similar(where.reindex(history.index).to_numpy()[ok], near[ok], where[target],
+                                    nearness(hi.loc[target, hour], lo.loc[target, hour], close.loc[target, hour], today_range))
         high = day.Open.iloc[0] if hour is None else hi.loc[target, hour]
         low = day.Open.iloc[0] if hour is None else lo.loc[target, hour]
-        out.append({"hour": hour, "high": high, "low": low, "n": len(history),
-                    **forecast(extras(history, hi, lo, hour), high, low, today_range)})
+        out.append({"hour": hour, "high": high, "low": low, "n": int((w > 0).sum()),
+                    **forecast(ex, high, low, today_range, w)})
     return out
 
 
@@ -140,20 +185,24 @@ def walk_forward(stats: pd.DataFrame, hi: pd.DataFrame, lo: pd.DataFrame, close:
         lo_now = (stats.open if hour is None else lo[hour].reindex(stats.index)).to_numpy()
         where = (np.zeros(len(stats), int) if hour is None
                  else position(hi, lo, close, hour).reindex(stats.index).to_numpy(int))
+        close_now = stats.open if hour is None else close[hour].reindex(stats.index)
+        near = nearness(hi_now, lo_now, close_now.to_numpy(), stats.r5.to_numpy())
         for i in range(warmup, len(stats)):
-            past = ex[:i][~np.isnan(ex[:i]).any(axis=1) & (where[:i] == where[i])]
+            ok = ~np.isnan(ex[:i]).any(axis=1) & ~np.isnan(near[:i]).any(axis=1)
+            past = ex[:i][ok]
+            w = np.ones(len(past)) if hour is None else similar(where[:i][ok], near[:i][ok], where[i], near[i])
             day, r = stats.iloc[i], stats.r5.iloc[i]
             row = {"hour": "open" if hour is None else f"{hour}:00", "day": stats.index[i]}
             for side, col, now, sign, actual in [("HOD", 0, hi_now[i], 1, day.high), ("LOD", 1, lo_now[i], -1, day.low)]:
-                done, lvls = odds(past[:, col], now, sign, r)
+                done, lvls = odds(past[:, col], now, sign, r, w)
                 went_further = sign * (actual - now) > 1e-9
                 row |= {f"{side}_done_pred": done, f"{side}_done_real": float(not went_further),
                         **{f"{side}_{int(p * 100)}": float(sign * (actual - lvl) >= 0) if went_further and not np.isnan(lvl) else np.nan
                            for p, lvl in zip(REACH, lvls)},
-                        f"{side}_miss": abs(actual - (line := now + sign * np.quantile(past[:, col], 0.5) * r)),
+                        f"{side}_miss": abs(actual - (line := now + sign * wquantile(past[:, col], w, 0.5) * r)),
                         # once price reached a line above/below the high/low so far, how much further it went
                         f"{side}_past_line": sign * (actual - line) if sign * (actual - line) >= 0 and line != now else np.nan,
-                        f"{side}_pinball": pinball(actual, past[:, col], now, sign, r)}
+                        f"{side}_pinball": pinball(actual, past[:, col], now, sign, r, w)}
             rows.append(row)
     return pd.DataFrame(rows)
 
