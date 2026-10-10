@@ -30,8 +30,8 @@ Open http://localhost:5000.
 python quantistat.py 2026-10-12   # target day; default is today
 ```
 
-Uses the same two years of 1h candles and keeps only past days with the target's
-day-of-month (calendar days 00:00-23:00 NY time). Quarterly expiry weeks and days where
+Uses the same two years of 1h candles and keeps only past days on the target's
+weekday (calendar days 00:00-23:00 NY time). Quarterly expiry weeks and days where
 Yahoo's continuous ES=F jumps between contracts are dropped (bad HOD/LOD). Saves `time_based.png` (hour
 of HOD/LOD split by bullish/bearish day) and `price_based.png` (HOD/LOD distance
 from the open in points; above 0 = HOD, below 0 = LOD, brighter = more often).

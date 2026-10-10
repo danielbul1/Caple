@@ -25,10 +25,11 @@ def test_daily_stats_uses_calendar_day_and_skips_days_not_opening_at_midnight():
     assert (day.hod_hour, day.lod_hour, day.bullish) == (9, 15, False)
 
 
-def test_same_day_of_month_keeps_only_earlier_days_with_that_day_number():
+def test_same_weekday_keeps_only_earlier_days_on_that_weekday():
     stats = pd.DataFrame({"open": [1, 2, 3, 4]},
-                         index=[date(2026, 8, 2), date(2026, 8, 3), date(2026, 9, 2), date(2026, 10, 2)])
-    assert list(qs.same_day_of_month(stats, date(2026, 10, 2)).index) == [date(2026, 8, 2), date(2026, 9, 2)]
+                         index=[date(2026, 9, 28), date(2026, 9, 29), date(2026, 10, 5), date(2026, 10, 12)])
+    # Mondays before Monday 2026-10-12; Tuesday 29th and the target itself are left out.
+    assert list(qs.same_weekday(stats, date(2026, 10, 12)).index) == [date(2026, 9, 28), date(2026, 10, 5)]
 
 
 def test_level_counts_rounds_distances_from_open_to_points():

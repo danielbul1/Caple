@@ -1,7 +1,8 @@
 """QuantiStat-style HOD/LOD statistics for ES=F, drawn with matplotlib.
 
 Takes the two years of hourly candles that app.py serves and looks only at past
-days with the same day-of-month as the target day (e.g. every 2nd for Jan 2).
+days on the same weekday as the target day (e.g. every Monday). backtest.py showed
+this beats the original tool's same day-of-month, which leaves only ~16 noisy days.
 A day is a calendar day in New York time (00:00-23:00), so it opens at the
 00:00 candle and the previous day must have ended before running this.
 
@@ -59,8 +60,8 @@ def daily_stats(candles: pd.DataFrame) -> pd.DataFrame:
     return stats[keep].drop(columns="first_hour")
 
 
-def same_day_of_month(stats: pd.DataFrame, target: date) -> pd.DataFrame:
-    return stats[[d.day == target.day and d < target for d in stats.index]]
+def same_weekday(stats: pd.DataFrame, target: date) -> pd.DataFrame:
+    return stats[[d.weekday() == target.weekday() and d < target for d in stats.index]]
 
 
 def level_counts(stats: pd.DataFrame) -> pd.Series:
@@ -100,8 +101,8 @@ def plot_price_based(stats: pd.DataFrame):
 
 if __name__ == "__main__":
     target = date.fromisoformat(sys.argv[1]) if len(sys.argv) > 1 else today_market()
-    stats = same_day_of_month(daily_stats(fetch_candles(today_market())), target)
-    print(f"{len(stats)} past days on day {target.day} of the month")
+    stats = same_weekday(daily_stats(fetch_candles(today_market())), target)
+    print(f"{len(stats)} past {target:%A}s")
     print(stats.to_string())
     plot_time_based(stats).savefig("time_based.png")
     plot_price_based(stats).savefig("price_based.png")
