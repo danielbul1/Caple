@@ -174,3 +174,18 @@ def test_parkinson_volatility_is_in_points():
     from quantistat import daily_stats
     park = daily_stats(df).park.iloc[0]
     assert np.isclose(park, 100 * np.sqrt((np.log(101 / 99) ** 2 + np.log(102 / 100) ** 2) / (4 * np.log(2))))
+
+
+def test_brightest_bins_are_the_most_common_ends_nearest_first_on_ties():
+    bins = [(110.0, 2), (120.0, 5), (130.0, 5), (140.0, 1), (150.0, 3)]
+    assert levels.brightest(bins, now=100.0, top=3) == [(120.0, 5), (130.0, 5), (150.0, 3)]
+    assert levels.brightest([], now=100.0) == []
+
+
+def test_plot_draws_one_line_per_bin_seen_twice_in_points_from_the_open():
+    f = {"hour": 9, "high": 105.0, "low": 95.0,
+         "HOD": {"done": 0.3, "levels": [107.0, 110.0, 115.0], "line": 108.0, "heat": [(110.0, 4), (120.0, 1), (130.0, 2)]},
+         "LOD": {"done": 0.6, "levels": [93.0, 90.0, 85.0], "line": 95.0, "heat": [(90.0, 2)]}}
+    fig = levels.plot_heat(f, open_price=100.0, title="t")
+    ys = sorted(round(l.get_ydata()[0], 2) for l in fig.axes[0].lines if l.get_linestyle() == "-" and l.get_linewidth() > 1.5)
+    assert ys == [-10.0, 10.0, 30.0]  # the 120 bin (one day, under half the brightest) is hidden

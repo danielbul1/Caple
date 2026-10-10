@@ -28,9 +28,18 @@ Open http://localhost:5000.
 ## Today's HOD/LOD, no bias needed
 
 ```bash
+python levels.py                   # today, after the latest candle
 python levels.py 2026-10-09 9      # after the 9:00 candle ("open" = before the open)
 python levels.py backtest          # walk-forward calibration on all the data
 ```
+
+Besides the levels it prints the brightest heatmap levels as prices (where the most similar
+past days ended) and saves `hodlod.png`, a QuantiStat-style "HOD/LOD Price Based" heatmap:
+points from the 00:00 open (price on the right axis), HOD above 0, LOD below, one line per
+2-point bin, brighter and thicker = more similar days ended there (bins under half the
+brightest are hidden); dashed = the 75/50/25% levels, thin white = the open and the high/low
+so far. The dashed levels are the calibrated forecast; a bright line alone is no better than a
+random day's (see Scorecard).
 
 At the open, or after any hourly candle, prints the chance the day's high and low
 are already in and, if they go further, the prices reached on 75% / 50% / 25% of

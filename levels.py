@@ -21,7 +21,8 @@ yardstick:
   high/low once most days are done, and be "reached" trivially)
 
 Run: python levels.py [DATE] [HOUR]   (HOUR = after that hour's candle, "open" for the
-     pre-open view; omit for the latest candle of DATE)
+     pre-open view; omit for the latest candle of DATE). Prints the levels and the brightest
+     heatmap levels as prices, and saves the heatmap as hodlod.png
      python levels.py backtest        (walk-forward calibration on all the data)
 """
 
@@ -127,6 +128,41 @@ def heat(extra: np.ndarray, now: float, sign: int, today_range: float, width: fl
         return []
     prices = np.round((now + sign * extra[extra > 1e-9] * today_range) / width) * width
     return [(float(p), int(c)) for p, c in zip(*np.unique(prices, return_counts=True))]
+
+
+def brightest(bins: list[tuple[float, int]], now: float, top: int = 3) -> list[tuple[float, int]]:
+    """The `top` heatmap bins where the most similar days ended (nearest to price first on a tie)."""
+    return sorted(sorted(bins, key=lambda b: (-b[1], abs(b[0] - now)))[:top], key=lambda b: b[0])
+
+
+def plot_heat(f: dict, open_price: float, title: str):
+    """QuantiStat-style "HOD/LOD Price Based" heatmap of one forecast row (see day_lines): points
+    from the 00:00 open, a line per 2-point bin where 2+ similar days ended and at least half as
+    many as in that side's brightest bin (fewer would bury it), brighter and thicker = more days; dashed = the 75/50/25% levels; thin white = the open and the high/low so far."""
+    import matplotlib.pyplot as plt
+    from matplotlib.cm import ScalarMappable
+    from matplotlib.colors import Normalize
+
+    plt.style.use("dark_background")
+    fig, ax = plt.subplots(figsize=(10, 7))
+    bins = [b for side in ("HOD", "LOD") for b in f[side]["heat"]
+            if b[1] >= max(2, 0.5 * max(c for _, c in f[side]["heat"]))]
+    norm = Normalize(2, max([c for _, c in bins], default=3))
+    for price, count in bins:
+        ax.axhline(price - open_price, color=plt.cm.viridis(norm(count)), linewidth=2 + 4 * norm(count))
+    for side in ("HOD", "LOD"):
+        for lvl in f[side]["levels"]:
+            if not np.isnan(lvl):
+                ax.axhline(lvl - open_price, color="tab:cyan", linestyle="--", linewidth=1)
+    for y in (0, f["high"] - open_price, f["low"] - open_price):
+        ax.axhline(y, color="white", linewidth=1)
+    ax.set_title(title)
+    ax.set_ylabel("points from the 00:00 open")
+    ax.secondary_yaxis("right", functions=(lambda y: y + open_price, lambda p: p - open_price)).set_ylabel("price")
+    ax.set_xticks([])
+    ax.grid(alpha=0.2)
+    fig.colorbar(ScalarMappable(norm, "viridis"), ax=ax, label="similar days that ended there", pad=0.12)
+    return fig
 
 
 def forecast(ex: pd.DataFrame, high_so_far: float, low_so_far: float, today_range: float,
@@ -254,6 +290,13 @@ if __name__ == "__main__":
         lv = " / ".join(f"{x:.2f}" for x in f[side]["levels"])
         print(f"  {side}: already in on {f[side]['done']:.0%} of similar days; "
               f"if it goes further: {lv} (reached on 75% / 50% / 25% of those); best guess {f[side]['line']:.2f}")
+    for side in ("HOD", "LOD"):
+        now = f["high"] if side == "HOD" else f["low"]
+        top = ", ".join(f"{p:.2f} ({c} days)" for p, c in brightest(f[side]["heat"], now))
+        print(f"  {side} brightest levels: {top or 'none'}")
+    title = f"HOD/LOD Price Based - {target} " + ("before the open" if hour is None else f"after {hour}:00")
+    plot_heat(f, open_price, title).savefig("hodlod.png", dpi=120)
+    print("  Saved hodlod.png")
     if target in events:
         print(f"  Warning: on past {events[target]} days the range ran ~{EVENT_SIZE[events[target]]}x normal and these "
               "levels were reached more often than stated (the 14:00 FOMC decision often sets the HOD/LOD late). "
