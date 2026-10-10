@@ -35,11 +35,13 @@ python levels.py backtest          # walk-forward calibration on all the data
 At the open, or after any hourly candle, prints the chance the day's high and low
 are already in and, if they go further, the prices reached on 75% / 50% / 25% of
 similar past days (same hour, price in the same fifth of the range so far, scaled
-to today's prior 5-day average range). VIX9D's implied move scaled ~2% better at the open
-(pinball, paired t -5) but came from Yahoo, which is no longer used. On LSE's 10 years
-walk-forward (2017-2026, 2,210 days) everything is calibrated: at 9:00 the HOD was forecast
-already in on 38.6% of days and was on 39.0%; the levels were reached on 76/52/27% of days.
-The miss of the median shrinks from ~17-21 points at the open to ~10-12 at 9:00 and ~5-6 at 12:00.
+to today's expected range). The expected range is a HAR blend (Corsi 2009) of yesterday's,
+the 5-day and the 22-day Parkinson volatility from LSE's hourly bars, weights 0.59/0.29/0.10
+on the log scale, fit on 2016-2021. It replaced the prior 5-day average range and recovers
+what Yahoo's VIX9D gave (below). On LSE's 10 years walk-forward (2017-2026, 2,193 days)
+everything is calibrated: at 9:00 the HOD was forecast already in on 39.0% of days and was
+on 39.0%; the levels were reached on 76/53/28% of days. The miss of the median shrinks from
+~17-20 points at the open to ~10-12 at 9:00 and ~5-6 at 12:00.
 
 ## What improves accuracy (tested on LSE 2018-2026, walk-forward)
 
@@ -48,8 +50,11 @@ Change in HOD+LOD pinball loss vs the model above; negative is better, t in brac
 | Idea (source) | open | 9:00 | 12:00 | Kept? |
 |---|---|---|---|---|
 | VIX9D instead of 5-day range (implied vol, Albers 2025) | -2% (-5) | -1% | ~0 | was; dropped with Yahoo |
+| HAR on hourly Parkinson vol instead of 5-day range, 2022-2026 out of sample | -2.2% (-4.9) | -0.2% | -0.3% | yes (2:00/5:00 -1.2%, 15:00 -0.6%) |
+| Parkinson vol alone, 5-day mean or EWM (half-life 3) | -0.9/-1.1% (-3.7/-3.0) | ~0 | ~0 | no, HAR is better |
+| HAR on daily ranges / + the 18:00-23:00 evening range | log-range error -6% / -5% (HAR-Parkinson -15%) | | | no |
 | Position in fifths of the range so far, not halves | 0 | -3% (-5) | -4% (-6) | yes |
-| HAR range forecast (Corsi 2009) on top of VIX9D | -0.6% (-3) | ~0 | ~0 | no, too small |
+| HAR on daily ranges on top of VIX9D | -0.6% (-3) | ~0 | ~0 | no, too small |
 | Match days on share of the range used so far ("% ATR used") | 0 | -0.3% | ~0 | no |
 | Weight recent days more (half-life 150/500 days) | ~0 | ~0 | ~0 | no |
 | LightGBM quantile regression (7-9 features) | +0.6% worse | -2% (-4) | -4% (-6) | no: fifths do the same simply |

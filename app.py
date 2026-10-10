@@ -126,8 +126,8 @@ def candles():
 def lines():
     """The HOD/LOD line of a day (default: the latest), as forecast before the open and after
     each hourly candle so far; the page redraws it live."""
-    from levels import day_lines  # levels imports this module
-    from quantistat import daily_stats, recent_range
+    from levels import day_lines, today_yardstick, use_yardstick  # levels imports this module
+    from quantistat import daily_stats
 
     try:
         candles = live_candles()
@@ -138,13 +138,14 @@ def lines():
     if len(day) == 0 or day.index[0].hour != 0:
         return jsonify({"error": f"No 00:00 candle for {target}"}), 404
     stats = daily_stats(candles)
-    rows = day_lines(candles, stats, target, recent_range(stats, target))
+    use_yardstick(stats)
+    rows = day_lines(candles, stats, target, today_yardstick(stats, target))
     num = lambda x: None if isnan(x) else round(float(x), 2)
     return jsonify(
         {
             "date": target.isoformat(),
             "live": target == today_market(),
-            "yardstick": "r5",
+            "yardstick": "HAR",
             "candles": [
                 {"hour": ts.hour, "open": float(r.Open), "high": float(r.High), "low": float(r.Low), "close": float(r.Close)}
                 for ts, r in day.iterrows()

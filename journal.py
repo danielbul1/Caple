@@ -23,7 +23,7 @@ from pathlib import Path
 import pandas as pd
 
 from app import today_market
-from levels import through_hour, walk_forward
+from levels import through_hour, use_yardstick, walk_forward
 from quantistat import daily_stats, load_candles
 
 JOURNAL = Path(__file__).with_name("journal.csv")
@@ -40,6 +40,7 @@ def score_days(candles: pd.DataFrame, start: date, end: date) -> pd.DataFrame:
     """Every scored day from start to end, each from earlier days only; empty if none is scored
     (no 00:00 open, expiry week or contract roll)."""
     stats = daily_stats(candles)
+    use_yardstick(stats)
     stats = stats.dropna()
     stats = stats[stats.index <= end]
     first = int((stats.index < start).sum())

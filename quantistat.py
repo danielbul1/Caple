@@ -21,6 +21,7 @@ import sys
 from datetime import date
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
@@ -65,6 +66,9 @@ def daily_stats(candles: pd.DataFrame) -> pd.DataFrame:
         "hod_hour": days.High.idxmax().map(lambda ts: ts.hour),
         "lod_hour": days.Low.idxmin().map(lambda ts: ts.hour),
         "first_hour": days.apply(lambda d: d.index[0].hour),
+        # Parkinson volatility from the day's hourly high/low, in points: levels.py's yardstick input
+        "park": np.sqrt((np.log(candles.High / candles.Low) ** 2).groupby(candles.index.date).sum()
+                        / (4 * np.log(2))) * days.Open.first(),
     })
     stats["bullish"] = stats.close > stats.open
     keep = (stats.first_hour == 0) & ~stats.index.isin(rolled_days) & ~stats.index.map(in_expiry_week)

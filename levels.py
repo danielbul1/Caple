@@ -3,8 +3,8 @@
 Before the open only the open is known; after each hourly candle the day's high
 and low so far are known too. For every past day we measure how much further the
 high still rose and the low still fell after that point, in units of that day's
-prior 5-day average range (so calm and wild days compare; VIX9D's implied move did ~2% better
-at the open but came from Yahoo, which is no longer used). Similar past days get the weight:
+yardstick: its expected range from earlier days' hourly volatility (so calm and wild days
+compare; see use_yardstick). Similar past days get the weight:
 half on the days where price at that hour sat in the same fifth of the range so far as today
 (halves cut the miss ~10% at 9:00; fifths, picked on 2018-2021, cut the pinball loss another
 ~4% at 9:00 and 12:00 on 2022-2026, paired t -4.6 and -5.0, and changed nothing before 5:00),
@@ -32,7 +32,7 @@ import numpy as np
 import pandas as pd
 
 import lse_source
-from quantistat import REACH, daily_stats, load_candles, recent_range, today_market
+from quantistat import REACH, daily_stats, load_candles, today_market
 
 CHECKPOINTS = [None, 2, 5, 9, 12, 15]  # None = before the open
 QUANTILES = [0.25, 0.5, 0.75]
@@ -42,6 +42,11 @@ QUANTILES = [0.25, 0.5, 0.75]
 # FOMC/CPI days only (better on 2022+, worse on 2017-2021), so events only get a warning.
 EVENT_SIZE = {"FOMC": 1.3, "CPI": 1.2}
 K_NEAREST = 150  # 300 was worse on 2018-2021 from 9:00 on
+# Log-scale weights of yesterday's, the 5-day and the 22-day average Parkinson volatility in the
+# yardstick (HAR, Corsi 2009), fit on 2016-2021 by regressing the log of each day's range on them;
+# HAR_SCALE (e^intercept) only makes it read as a typical day's range in points.
+HAR = (0.59, 0.29, 0.10)
+HAR_SCALE = 1.57
 
 
 def through_hour(candles: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -159,6 +164,26 @@ def day_lines(candles: pd.DataFrame, stats: pd.DataFrame, target: date, today_ra
     return out
 
 
+def yardstick(park: pd.Series) -> pd.Series:
+    """Each day's typical range in points from earlier days' hourly (Parkinson) volatility, HAR-style.
+    A constant factor would cancel anyway: levels are past extras in yardsticks times today's."""
+    p = park.shift()
+    return HAR_SCALE * p ** HAR[0] * p.rolling(5).mean() ** HAR[1] * p.rolling(22).mean() ** HAR[2]
+
+
+def use_yardstick(stats: pd.DataFrame) -> None:
+    """Rewrite stats.r5 (the scale column the forecast reads) with the HAR yardstick on the same days.
+    Walk-forward on LSE 2022-2026 it cut the pinball loss 2.2% at the open (paired t -4.9), 1.2% at
+    2:00 and 5:00, ~0 at 9:00 and 12:00, 0.6% at 15:00 vs the 5-day range (2017-2021: 1-3%)."""
+    stats["r5"] = yardstick(stats.park).where(stats.r5.notna())
+
+
+def today_yardstick(stats: pd.DataFrame, target: date) -> float:
+    """The yardstick of target from the kept days before it, also when target itself is not kept."""
+    park = stats.park[[d < target for d in stats.index]]
+    return yardstick(pd.concat([park, pd.Series([np.nan], index=[target])])).iloc[-1]
+
+
 def walk_forward(stats: pd.DataFrame, hi: pd.DataFrame, lo: pd.DataFrame, close: pd.DataFrame,
                  warmup: int = 250) -> pd.DataFrame:
     """Each day forecast only from earlier days; did the HOD/LOD reach each level?"""
@@ -194,10 +219,11 @@ def walk_forward(stats: pd.DataFrame, hi: pd.DataFrame, lo: pd.DataFrame, close:
 if __name__ == "__main__":
     candles = load_candles()
     stats = daily_stats(candles)
+    use_yardstick(stats)
     hi, lo, close = through_hour(candles)
     if sys.argv[1:2] == ["backtest"]:
         result = walk_forward(stats.dropna(), hi, lo, close)
-        print(f"{result.day.nunique()} days, {result.day.min()} .. {result.day.max()}, scaled by the 5-day range")
+        print(f"{result.day.nunique()} days, {result.day.min()} .. {result.day.max()}, scaled by the HAR yardstick")
         print("*_done_pred vs *_done_real: forecast vs real share of days already done at that hour;")
         print("HOD_75 etc.: on days that went further, share reaching the '75%' level (honest: ~0.75);")
         print("*_miss: average points between the overall median forecast (the line) and the real HOD/LOD;")
@@ -218,12 +244,12 @@ if __name__ == "__main__":
     if hour is not None and hour > day.index[-1].hour:
         sys.exit(f"The {hour}:00 candle of {target} is not in yet (latest {day.index[-1].hour}:00).")
     open_price = day.Open.iloc[0]
-    today_range = recent_range(stats, target)
+    today_range = today_yardstick(stats, target)
     f = next(r for r in day_lines(candles[candles.index.date <= target], stats, target, today_range) if r["hour"] == hour)
     hod_now, lod_now = f["high"], f["low"]
     when = "before the open" if hour is None else f"after the {hour}:00 candle: high {hod_now:.2f}, low {lod_now:.2f}"
     kind = f"{events[target]} day, " if target in events else ""
-    print(f"{target} {kind}open {open_price:.2f}, 5-day range {today_range:.1f}, {when}  ({f['n']} similar past days)")
+    print(f"{target} {kind}open {open_price:.2f}, expected range {today_range:.1f}, {when}  ({f['n']} similar past days)")
     for side in ("HOD", "LOD"):
         lv = " / ".join(f"{x:.2f}" for x in f[side]["levels"])
         print(f"  {side}: already in on {f[side]['done']:.0%} of similar days; "

@@ -152,3 +152,25 @@ def test_walk_forward_and_the_live_view_give_the_same_forecast_for_a_day():
         w = wf.loc["open" if row["hour"] is None else f"{row['hour']}:00"]
         assert np.isclose(row["HOD"]["done"], w.HOD_done_pred) and np.isclose(row["LOD"]["done"], w.LOD_done_pred)
         assert np.isclose(abs(stats.high.iloc[-1] - row["HOD"]["line"]), w.HOD_miss)
+
+
+def test_yardstick_blends_earlier_days_parkinson_volatility_only():
+    idx = pd.date_range("2026-01-01", periods=30).date
+    park = pd.Series(np.arange(1.0, 31.0), index=idx)
+    y = levels.yardstick(park)
+    assert y.iloc[:22].isna().all()  # needs 22 earlier days
+    p = park.iloc[:24]  # the 25th day sees days 1-24
+    want = levels.HAR_SCALE * p.iloc[-1] ** levels.HAR[0] * p.tail(5).mean() ** levels.HAR[1] * p.tail(22).mean() ** levels.HAR[2]
+    assert np.isclose(y.iloc[24], want)
+    changed = park.copy(); changed.iloc[24] = 1000.0  # the day itself never feeds its own yardstick
+    assert np.isclose(levels.yardstick(changed).iloc[24], want)
+    # a day missing from stats (an expiry week) gets the same yardstick from the days before it
+    target = idx[24]
+    assert np.isclose(levels.today_yardstick(pd.DataFrame({"park": park.drop(target)}), target), want)
+
+
+def test_parkinson_volatility_is_in_points():
+    df = candles([("2026-11-10 00:00", 100, 101, 99, 100), ("2026-11-10 01:00", 100, 102, 100, 101)])
+    from quantistat import daily_stats
+    park = daily_stats(df).park.iloc[0]
+    assert np.isclose(park, 100 * np.sqrt((np.log(101 / 99) ** 2 + np.log(102 / 100) ** 2) / (4 * np.log(2))))
