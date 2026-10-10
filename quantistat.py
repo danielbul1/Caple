@@ -9,9 +9,12 @@ A day is a calendar day in New York time (00:00-23:00), so it opens at the
 - Time Based: at which hour the high (HOD) and the low (LOD) of the day formed,
   split by bias (bullish = closed above its open).
 - Price Based: how many points from the open the HOD (above 0) and the LOD
-  (below 0) landed. Your bias picks which half to read.
+  (below 0) landed, split by bias like Time Based. The original mixes both kinds of
+  day in one map; backtest.py showed splitting cuts the miss from ~34 to ~27 points.
+- Text plan: per bias, the most common HOD/LOD hours and the distances the HOD/LOD
+  reached on 75%, 50% and 25% of days (prices too, if you pass the 00:00 open).
 
-Run: python quantistat.py [TARGET_DATE]   (default: today)
+Run: python quantistat.py [TARGET_DATE] [OPEN]   (default: today, distances only)
 """
 
 import sys
@@ -25,6 +28,8 @@ from matplotlib.colors import Normalize
 from app import fetch_candles, today_market
 
 HOURS = range(24)
+BIASES = [(True, "Bullish", "blue"), (False, "Bearish", "purple")]
+REACH = [0.75, 0.5, 0.25]
 # Yahoo's continuous ES=F flips between contracts around a roll, which shows up as a
 # jump between two candles of the same day. Real hour-to-hour gaps are a few points;
 # only the 18:00 reopen after the daily halt can gap for real.
@@ -70,10 +75,16 @@ def level_counts(stats: pd.DataFrame) -> pd.Series:
     return distances.value_counts().sort_index()
 
 
+def reach_levels(days: pd.DataFrame) -> dict[str, list[float]]:
+    """Distances from the open that the HOD and the LOD reached on 75%, 50% and 25% of days."""
+    return {"HOD": [(days.high - days.open).quantile(1 - p) for p in REACH],
+            "LOD": [(days.low - days.open).quantile(p) for p in REACH]}
+
+
 def plot_time_based(stats: pd.DataFrame):
     plt.style.use("dark_background")
     fig, axes = plt.subplots(2, 2, figsize=(12, 10))
-    for row, (bullish, name, color) in enumerate([(True, "Bullish", "blue"), (False, "Bearish", "purple")]):
+    for row, (bullish, name, color) in enumerate(BIASES):
         days = stats[stats.bullish == bullish]
         for ax, kind in zip(axes[row], ["HOD", "LOD"]):
             ax.hist(days[f"{kind.lower()}_hour"], bins=range(25), color=color, edgecolor="white")
@@ -87,23 +98,36 @@ def plot_time_based(stats: pd.DataFrame):
 
 def plot_price_based(stats: pd.DataFrame):
     plt.style.use("dark_background")
-    counts = level_counts(stats)
-    norm = Normalize(0, counts.max())
-    fig, ax = plt.subplots(figsize=(9, 6))
-    for points, count in counts.items():
-        ax.axhline(points, color=plt.cm.viridis(norm(count)), linewidth=2 * count)
-    fig.colorbar(ScalarMappable(norm, "viridis"), ax=ax, label="heatmap")
-    ax.set_title(f"HOD/LOD Price Based (n={len(stats)})")
-    ax.set_ylabel("points")
-    ax.grid(alpha=0.2)
+    groups = {name: stats[stats.bullish == bullish] for bullish, name, _ in BIASES}
+    counts = {name: level_counts(days) for name, days in groups.items()}
+    norm = Normalize(0, max(c.max() for c in counts.values() if len(c)))
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6), sharey=True)
+    for ax, (name, levels) in zip(axes, counts.items()):
+        for points, count in levels.items():
+            ax.axhline(points, color=plt.cm.viridis(norm(count)), linewidth=2 * count)
+        ax.set_title(f"HOD/LOD If {name} Bias (n={len(groups[name])})")
+        ax.grid(alpha=0.2)
+    axes[0].set_ylabel("points")
+    fig.colorbar(ScalarMappable(norm, "viridis"), ax=axes, label="heatmap")
     return fig
+
+
+def print_plan(stats: pd.DataFrame, open_price: float | None):
+    for bullish, name, _ in BIASES:
+        days = stats[stats.bullish == bullish]
+        print(f"\n{name} bias ({len(days)} days)")
+        for kind, levels in reach_levels(days).items():
+            hours = ", ".join(f"{h}:00" for h in days[f"{kind.lower()}_hour"].value_counts().index[:2])
+            reached = " / ".join(f"{lvl:+.1f}" + (f" = {open_price + lvl:.2f}" if open_price else "") for lvl in levels)
+            print(f"  {kind}: most often at {hours}; reached {reached} on 75% / 50% / 25% of days")
 
 
 if __name__ == "__main__":
     target = date.fromisoformat(sys.argv[1]) if len(sys.argv) > 1 else today_market()
+    open_price = float(sys.argv[2]) if len(sys.argv) > 2 else None
     stats = same_weekday(daily_stats(fetch_candles(today_market())), target)
     print(f"{len(stats)} past {target:%A}s")
-    print(stats.to_string())
+    print_plan(stats, open_price)
     plot_time_based(stats).savefig("time_based.png")
     plot_price_based(stats).savefig("price_based.png")
     print("Saved time_based.png and price_based.png")

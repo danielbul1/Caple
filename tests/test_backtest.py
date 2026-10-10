@@ -26,3 +26,13 @@ def test_bearish_days_are_scored_on_the_low_side():
     }, index=[date(2026, 1, 5), date(2026, 10, 5)])  # both Monday the 5th
     result = bt.backtest(stats, warmup=1).set_index("method")
     assert result.loc["all days", ["time_score", "price_error"]].tolist() == [1.0, 10.0]
+
+
+def test_price_levels_come_from_same_bias_days_and_coverage_is_reported():
+    stats = pd.DataFrame({
+        "open": [100.0, 100.0, 100.0], "high": [130.0, 101.0, 125.0], "low": [99.0, 60.0, 98.0],
+        "hod_hour": [15, 0, 15], "lod_hour": [0, 15, 0], "bullish": [True, False, True],
+    }, index=[date(2026, 1, 5), date(2026, 10, 5), date(2027, 4, 5)])  # Mondays, all on the 5th
+    row = bt.backtest(stats, warmup=2).set_index("method").loc["all days"]
+    # Only the bullish day (+30) counts for a bullish day, not the bearish +1: the +25 day reached none of it.
+    assert (row.price_error, row.reached_75, row.reached_50, row.reached_25) == (5.0, False, False, False)

@@ -45,8 +45,10 @@ def test_plots_build_like_quantistat():
         "HOD If Bullish Bias (n=1)", "LOD If Bullish Bias (n=1)",
         "HOD If Bearish Bias (n=1)", "LOD If Bearish Bias (n=1)"]
     price_fig = qs.plot_price_based(stats)
-    assert price_fig.axes[0].get_title() == "HOD/LOD Price Based (n=2)"
-    assert len(price_fig.axes[0].lines) == 4  # one horizontal level per distinct distance
+    assert [ax.get_title() for ax in price_fig.axes[:2]] == [
+        "HOD/LOD If Bullish Bias (n=1)", "HOD/LOD If Bearish Bias (n=1)"]
+    # Each bias only shows its own days' levels: bullish +10/-3, bearish +4/-10.
+    assert [sorted(line.get_ydata()[0] for line in ax.lines) for ax in price_fig.axes[:2]] == [[-3, 10], [-10, 4]]
 
 
 def test_time_bars_sit_on_their_clock_hour():
@@ -70,7 +72,7 @@ def test_titles_show_sample_size():
     stats = pd.DataFrame({"open": [100.0], "high": [110.0], "low": [90.0],
                           "hod_hour": [1], "lod_hour": [2], "bullish": [True]})
     assert qs.plot_time_based(stats).axes[0].get_title() == "HOD If Bullish Bias (n=1)"
-    assert qs.plot_price_based(stats).axes[0].get_title() == "HOD/LOD Price Based (n=1)"
+    assert qs.plot_price_based(stats).axes[0].get_title() == "HOD/LOD If Bullish Bias (n=1)"
 
 
 def test_daily_stats_drops_the_quarterly_expiry_week():
@@ -78,3 +80,8 @@ def test_daily_stats_drops_the_quarterly_expiry_week():
     rows = [(f"2025-09-{day} 00:00", 100, 101, 99, 100) for day in (12, 15, 19, 22)]
     rows += [("2025-10-16 00:00", 100, 101, 99, 100)]  # not a quarterly month
     assert [d.day for d in qs.daily_stats(candles(rows)).index] == [12, 22, 16]
+
+
+def test_reach_levels_are_the_distances_75_50_25_percent_of_days_reached():
+    days = pd.DataFrame({"open": [100.0] * 5, "high": [110.0, 120, 130, 140, 150], "low": [90.0, 80, 70, 60, 50]})
+    assert qs.reach_levels(days) == {"HOD": [20, 30, 40], "LOD": [-20, -30, -40]}

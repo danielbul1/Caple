@@ -27,14 +27,16 @@ Open http://localhost:5000.
 ## QuantiStat charts
 
 ```bash
-python quantistat.py 2026-10-12   # target day; default is today
+python quantistat.py 2026-10-12 7840   # target day (default today), optional 00:00 open
 ```
 
 Uses the same two years of 1h candles and keeps only past days on the target's
 weekday (calendar days 00:00-23:00 NY time). Quarterly expiry weeks and days where
 Yahoo's continuous ES=F jumps between contracts are dropped (bad HOD/LOD). Saves `time_based.png` (hour
 of HOD/LOD split by bullish/bearish day) and `price_based.png` (HOD/LOD distance
-from the open in points; above 0 = HOD, below 0 = LOD, brighter = more often).
+from the open in points, split by bias; above 0 = HOD, below 0 = LOD, brighter =
+more often), and prints per bias the usual HOD/LOD hours and the levels the
+HOD/LOD reached on 75% / 50% / 25% of days (as prices when the open is given).
 `python backtest.py` checks, walk-forward, whether picking days by day-of-month
 beats same weekday or simply all days (bias taken as known).
 Tests: `pip install pytest && pytest`.
