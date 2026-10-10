@@ -4,7 +4,8 @@ For a target day, average the point change of the dates within 3 days of it over
 10, 5 and 2 years before its year (a single date is often a weekend) (the site refreshes on January 1, so a year never sees
 itself). The bias is the sign; "agree" calls only when all three windows point the
 same way, which is how the video reads it ("2, 5 and 10 year data all show a sell off").
-Daily closes come from Yahoo, which has ES=F daily back to 2000.
+Daily closes (each New York day's last 1h close) come from LSE, which starts mid 2016, so
+the 10-year window only uses the years it has.
 
 Run: python seasonal.py [DATE]   -> prints the bias and saves seasonal.png
 """
@@ -16,18 +17,19 @@ from datetime import date, timedelta
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import yfinance as yf
 
-from app import SYMBOL, today_market
+import lse_source
+from app import today_market
 
 WINDOWS = [10, 5, 2]
 COLORS = {10: "purple", 5: "tab:blue", 2: "tab:green"}
 
 
 def daily_changes() -> pd.Series:
-    df = yf.download(SYMBOL, start="2000-01-01", interval="1d", progress=False,
-                     auto_adjust=False, multi_level_index=False)
-    return df.Close.diff().dropna()
+    close = lse_source.fetch().Close
+    daily = close.groupby(close.index.date).last()
+    daily.index = pd.to_datetime(daily.index)
+    return daily.diff().dropna()
 
 
 def by_date(changes: pd.Series) -> pd.DataFrame:

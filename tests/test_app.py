@@ -1,7 +1,8 @@
+from datetime import date, timedelta
+
 import pandas as pd
 
 import app
-import levels
 import lse_source
 
 
@@ -10,12 +11,13 @@ def bars(start, n, price):
     return pd.DataFrame({c: float(price) for c in ("Open", "High", "Low", "Close", "Volume")}, index=idx)
 
 
-def test_live_candles_use_lse_history_topped_up_with_yahoos_newest_bars(monkeypatch):
-    monkeypatch.setenv("LSE_API_KEY", "x")
+def test_candles_serve_the_lookback_before_the_picked_date_from_lse(monkeypatch):
     monkeypatch.setattr(app, "_live", None)
-    monkeypatch.setattr(levels, "implied_closes", lambda: pd.Series(dtype=float))
-    monkeypatch.setattr(lse_source, "fetch", lambda: bars("2016-06-01 00:00", 3, 1))
-    monkeypatch.setattr(app, "download", lambda start, end: bars("2016-06-01 01:00", 4, 2))  # overlaps 01:00, 02:00
-    candles, _ = app.live_candles()
-    assert candles.Close.tolist() == [1, 1, 1, 2, 2]  # LSE wherever it has the bar, Yahoo only after it
-    assert candles.index.is_monotonic_increasing
+    monkeypatch.setattr(app, "today_market", lambda: date(2018, 6, 5))
+    monkeypatch.setattr(lse_source, "fetch", lambda: bars("2016-06-01 00:00", 24 * 800, 1))
+    client = app.app.test_client()
+    days = client.get("/api/available-dates").get_json()["available"]
+    assert days[0] == (date(2016, 6, 1) + timedelta(days=app.LOOKBACK_DAYS)).isoformat() and days[-1] == "2018-06-05"
+    data = client.get("/api/candles?date=2018-06-05").get_json()
+    assert data["first"] == "2016-06-06 00:00" and data["last"] == "2018-06-04 23:00"
+    assert client.get("/api/candles?date=2016-07-01").status_code == 422  # not enough history before it

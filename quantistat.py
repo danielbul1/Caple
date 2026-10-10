@@ -1,7 +1,6 @@
-"""QuantiStat-style HOD/LOD statistics for ES=F, drawn with matplotlib.
+"""QuantiStat-style HOD/LOD statistics for ES, drawn with matplotlib.
 
-Takes hourly ES candles (10 years from LSE with LSE_API_KEY set, else the two years
-of Yahoo data app.py serves) and looks only at past
+Takes LSE's ten years of hourly ES candles and looks only at past
 days on the same weekday as the target day (e.g. every Monday). backtest.py showed
 this beats the original tool's same day-of-month, which leaves only ~16 noisy days.
 A day is a calendar day in New York time (00:00-23:00), so it opens at the
@@ -18,7 +17,6 @@ A day is a calendar day in New York time (00:00-23:00), so it opens at the
 Run: python quantistat.py [TARGET_DATE] [OPEN]   (default: today, distances only)
 """
 
-import os
 import sys
 from datetime import date
 
@@ -28,27 +26,27 @@ from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 
 import lse_source
-from app import fetch_candles, today_market
+from app import today_market
 
 HOURS = range(24)
 BIASES = [(True, "Bullish", "blue"), (False, "Bearish", "purple")]
 REACH = [0.75, 0.5, 0.25]
-# Yahoo's continuous ES=F flips between contracts around a roll, which shows up as a
+# A continuous ES series flips between contracts around a roll, which shows up as a
 # jump between two candles of the same day. Real hour-to-hour gaps are a few points;
 # only the 18:00 reopen after the daily halt can gap for real.
 MAX_GAP_POINTS = 25
 
 
 def in_expiry_week(d: date) -> bool:
-    """Monday to third Friday of Mar/Jun/Sep/Dec, when Yahoo also mixes the two
+    """Monday to third Friday of Mar/Jun/Sep/Dec, when a continuous series can also mix the two
     contracts inside single candles, which the gap check can't see."""
     third_friday = 15 + (4 - date(d.year, d.month, 15).weekday()) % 7
     return d.month % 3 == 0 and third_friday - 4 <= d.day <= third_friday
 
 
 def load_candles() -> pd.DataFrame:
-    """Ten years of ES.F from LSE when LSE_API_KEY is set, else Yahoo's last two years."""
-    return lse_source.fetch() if os.environ.get("LSE_API_KEY") else fetch_candles(today_market())
+    """Ten years of ES.F 1h bars from LSE."""
+    return lse_source.fetch()
 
 
 def daily_stats(candles: pd.DataFrame) -> pd.DataFrame:

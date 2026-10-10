@@ -1,21 +1,21 @@
 """Can anything forecast ES's daily direction? Walk-forward test of the Discord
 "statistical data" ideas (markov-process, sarimax, bias-forecasting).
 
-Each Yahoo daily ES=F session (18:00-17:00 NY, since 2000) is called bullish
-(close > open) or not from what is known at its open: earlier sessions and the
-previous ^VIX close. Every model is refit at the start of each year on all earlier
-sessions only, gives P(bullish) for every session of that year, and is scored on
-2016 onward against the base rate (share of bullish sessions before that year):
+Each LSE calendar day of ES (00:00-23:00 NY, since mid 2016, the days quantistat.py
+keeps) is called bullish (close > open) or not from earlier days only. Every model is
+refit at the start of each year on all earlier days, gives P(bullish) for every day of
+that year, and is scored on 2019 onward against the base rate (share of bullish days
+before that year):
 - Brier score (primary, pre-registered): edge = base Brier - model Brier per day; a
   model passes only if the mean edge is more than two standard errors above 0.
 - accuracy of calling the likelier side, against always calling the base-rate side.
 
 Models:
-- markov1/2/3: share of bullish sessions after the same last 1/2/3 directions
+- markov1/2/3: share of bullish days after the same last 1/2/3 directions
 - markov2_range: same, the state also says whether each day's range was above its
   20-day average (big/small days)
-- sarimax: SARIMAX(1,0,1)x(1,0,1,5) on the session return with VIX change and
-  range ratio as exogenous inputs; P = chance the one-step forecast is above 0
+- sarimax: SARIMAX(1,0,1)x(1,0,1,5) on the day's return with the range ratio as an
+  exogenous input; P = chance the one-step forecast is above 0
 - logit: logistic regression on the features below
 - gbm: gradient-boosted trees (sklearn's LightGBM-style HistGradientBoosting)
 
@@ -26,7 +26,6 @@ import warnings
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
 from scipy.stats import norm
 from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
@@ -34,23 +33,22 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 
-from app import SYMBOL, today_market
+from app import today_market
+from quantistat import daily_stats, load_candles
 
-FIRST_TEST_YEAR = 2016
-FEATURES = ["ret1", "ret2", "ret5", "range_ratio", "close_loc", "ma20_dist", "vix", "vix_chg",
-            "vix_ma_ratio", "weekday", "month_start"]
+FIRST_TEST_YEAR = 2019
+FEATURES = ["ret1", "ret2", "ret5", "range_ratio", "close_loc", "ma20_dist", "weekday", "month_start"]
 
 
 def load() -> pd.DataFrame:
-    get = lambda s: yf.download(s, start="2000-01-01", interval="1d", progress=False,
-                                auto_adjust=False, multi_level_index=False)
-    es, vix = get(SYMBOL), get("^VIX")
-    es = es[(es.High > es.Low) & (es.index.date < today_market())]  # no flat placeholders, no unfinished session
-    return es[["Open", "High", "Low", "Close"]].join(vix.Close.rename("VIX")).ffill()
+    stats = daily_stats(load_candles())
+    stats = stats[stats.index < today_market()]  # today is not finished
+    stats.index = pd.to_datetime(stats.index)
+    return stats.rename(columns=str.capitalize)[["Open", "High", "Low", "Close"]]
 
 
 def features(df: pd.DataFrame) -> pd.DataFrame:
-    """One row per session, built only from sessions before it and the previous VIX close."""
+    """One row per day, built only from the days before it."""
     ret = df.Close / df.Open - 1
     rng = (df.High - df.Low) / df.Close
     p = lambda s: s.shift(1)
@@ -63,9 +61,6 @@ def features(df: pd.DataFrame) -> pd.DataFrame:
         "range_ratio": p(rng / rng.rolling(20).mean()),
         "close_loc": p((df.Close - df.Low) / (df.High - df.Low)),
         "ma20_dist": p(df.Close / df.Close.rolling(20).mean() - 1),
-        "vix": p(df.VIX),
-        "vix_chg": p(df.VIX.pct_change()),
-        "vix_ma_ratio": p(df.VIX / df.VIX.rolling(20).mean()),
         "weekday": df.index.weekday,
         "month_start": (df.index.month != df.index.to_series().shift().dt.month).astype(float),
     }, index=df.index)
@@ -73,7 +68,7 @@ def features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def markov(train: pd.DataFrame, test: pd.DataFrame, order: int, with_range: bool = False) -> np.ndarray:
-    """Laplace-smoothed share of bullish sessions after the same state in training."""
+    """Laplace-smoothed share of bullish days after the same state in training."""
     both = pd.concat([train, test])
     bits = [both.bullish.shift(k) for k in range(1, order + 1)]
     if with_range:  # range_ratio is already yesterday's, so day t-k's is shift(k - 1)
@@ -88,8 +83,8 @@ def markov(train: pd.DataFrame, test: pd.DataFrame, order: int, with_range: bool
 
 def sarimax(train: pd.DataFrame, test: pd.DataFrame) -> np.ndarray:
     """Fit on training, then filter through the test year with those parameters: each
-    one-step forecast uses only earlier sessions."""
-    exog = ["vix_chg", "range_ratio"]
+    one-step forecast uses only earlier days."""
+    exog = ["range_ratio"]
     spec = dict(order=(1, 0, 1), seasonal_order=(1, 0, 1, 5), trend="c")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -119,7 +114,7 @@ MODELS = {
 
 
 def walk_forward(data: pd.DataFrame, models: dict, first_year: int = FIRST_TEST_YEAR) -> pd.DataFrame:
-    """P(bullish) per test session: refit each January on every earlier session."""
+    """P(bullish) per test day: refit each January on every earlier day."""
     years = data.index.year
     out = []
     for year in range(first_year, years.max() + 1):
@@ -147,9 +142,9 @@ def score(preds: pd.DataFrame) -> pd.DataFrame:
 if __name__ == "__main__":
     data = features(load())
     preds = walk_forward(data, MODELS)
-    print(f"{len(data)} sessions {data.index[0]:%Y-%m-%d} .. {data.index[-1]:%Y-%m-%d}, scored "
+    print(f"{len(data)} days {data.index[0]:%Y-%m-%d} .. {data.index[-1]:%Y-%m-%d}, scored "
           f"{len(preds)} from {FIRST_TEST_YEAR}, bullish {preds.bullish.mean():.1%}\n")
     print(score(preds).round(4).to_string(index=False))
-    halves = preds.index.year < 2021
-    for label, part in [("2016-2020", preds[halves]), ("2021-", preds[~halves])]:
+    halves = preds.index.year < 2023
+    for label, part in [("2019-2022", preds[halves]), ("2023-", preds[~halves])]:
         print(f"\n{label}\n" + score(part)[["model", "brier_edge_x1e4", "two_se_x1e4", "accuracy", "base_accuracy"]].round(4).to_string(index=False))

@@ -73,15 +73,6 @@ def test_odds_when_no_similar_day_went_further():
     assert done == 1.0 and all(np.isnan(lvls))
 
 
-def test_implied_move_uses_the_last_close_before_the_day():
-    closes = pd.Series([10.0, 20.0], index=[date(2026, 11, 6), date(2026, 11, 9)])
-    # Tuesday 11-10 opens at 00:00, before that day's index close: Monday's 20 is the latest known.
-    # The index is annualised: 20% a year is 20% / sqrt(252) of the open for one day (63 points).
-    assert levels.implied_move(closes, date(2026, 11, 10), 5000.0) == 0.2 * 5000.0 / np.sqrt(252)
-    assert levels.implied_move(closes, date(2026, 11, 9), 5000.0) == 0.1 * 5000.0 / np.sqrt(252)  # Friday's, over the weekend
-    assert np.isnan(levels.implied_move(closes, date(2026, 11, 6), 5000.0))   # nothing known yet
-
-
 def test_forecast_line_is_the_median_final_hod_and_lod():
     # Half the days the HOD was already in: the best single guess for the HOD is between "in" and +1 range.
     ex = pd.DataFrame({"up": [0.0, 0.0, 1.0, 2.0], "down": [0.0, 1.0, 1.0, 1.0]})

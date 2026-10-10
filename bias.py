@@ -25,8 +25,7 @@ None beat "always bullish" (51.9% right out of sample); the best edges were with
 noise and mostly negative. "Yesterday" means the previous kept day, so a day after a
 dropped expiry week compares with the week before; that touches few days.
 
-Run: LSE_API_KEY=... python bias.py   (forecast_bias.py tests Markov chains, SARIMAX and
-ML models on 26 years of Yahoo daily sessions)
+Run: python bias.py   (forecast_bias.py tests Markov chains, SARIMAX and ML models walk-forward)
 """
 
 from datetime import date, timedelta

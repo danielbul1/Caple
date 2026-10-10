@@ -1,12 +1,13 @@
-"""Ten years of hourly ES candles from London Strategic Edge (LSE).
+"""Ten years of hourly ES candles from London Strategic Edge (LSE), the only data source.
 
-Yahoo only serves 1h bars for the last 730 days; the LSE vault has ES.F 1h back to
-mid 2016. Needs a free key in the LSE_API_KEY environment variable. The full pull
-is ~13 requests of 5000 rows, cached to lse_ES.F_1h.csv; later runs only fetch new bars.
+The LSE vault has ES.F 1h back to mid 2016. The key is the LSE_API_KEY environment variable,
+else the one in LSE.md. The full pull is ~13 requests of 5000 rows, cached to
+lse_ES.F_1h.csv; later runs only fetch new bars.
 """
 
 import json
 import os
+import re
 import time
 import urllib.parse
 import urllib.request
@@ -32,9 +33,13 @@ def to_frame(rows: list[dict]) -> pd.DataFrame:
     return df.rename(columns=str.capitalize)[["Open", "High", "Low", "Close", "Volume"]]
 
 
+def api_key() -> str:
+    return os.environ.get("LSE_API_KEY") or re.search(r"lse_live_\w+", (Path(__file__).parent / "LSE.md").read_text())[0]
+
+
 def get(path: str, params: dict) -> list[dict]:
     req = urllib.request.Request(f"{VAULT}{path}?{urllib.parse.urlencode(params)}",
-                                 headers={"x-api-key": os.environ["LSE_API_KEY"], "User-Agent": HEADERS_UA})
+                                 headers={"x-api-key": api_key(), "User-Agent": HEADERS_UA})
     with urllib.request.urlopen(req, timeout=120) as resp:
         return json.loads(resp.read())
 

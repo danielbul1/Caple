@@ -1,36 +1,24 @@
-"""Small server that serves two years of hourly ES=F candles from Yahoo Finance.
+"""Small server that serves hourly ES candles from London Strategic Edge (LSE).
 
 The user picks a date D. The response holds every 1h candle that closed before
-D (the last one is D-1 23:00 New York time) going back LOOKBACK_DAYS days.
-
-Yahoo only serves 1h data whose start lies within the last 730 days, counted
-from the current moment. A date is selectable only when its full lookback fits
-inside that window, so in practice only today (and early in the morning,
-yesterday) can be picked.
+D (the last one is D-1 23:00 New York time) going back LOOKBACK_DAYS days. LSE's
+history starts mid 2016, so any date with that much history before it can be picked.
 """
 
-import os
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, timedelta
 from io import StringIO
 from math import isnan
 from time import monotonic
 from zoneinfo import ZoneInfo
 
 import pandas as pd
-import yfinance as yf
 from flask import Flask, Response, jsonify, request, send_from_directory
 
-SYMBOL = "ES=F"
-INTERVAL = "1h"
+SYMBOL = "ES.F"
 LOOKBACK_DAYS = 729
-YAHOO_WINDOW_DAYS = 730
-# Keep a small buffer from Yahoo's moving boundary so a request built just
-# before the boundary passes doesn't fail by the time it reaches Yahoo.
-SAFETY_MARGIN = timedelta(minutes=10)
 MARKET_TZ = ZoneInfo("America/New_York")
 
 app = Flask(__name__, static_folder="static")
-_cache: dict[date, pd.DataFrame] = {}
 LIVE_TTL = 120
 _live: tuple[float, pd.DataFrame] | None = None
 
@@ -44,59 +32,19 @@ def window_for(picked: date) -> tuple[date, date]:
     return picked - timedelta(days=LOOKBACK_DAYS), picked
 
 
-def is_available(picked: date) -> bool:
-    if picked > today_market():
-        return False
-    start, _ = window_for(picked)
-    start_moment = datetime.combine(start, time.min, MARKET_TZ)
-    oldest_allowed = datetime.now(timezone.utc) - timedelta(days=YAHOO_WINDOW_DAYS)
-    return start_moment >= oldest_allowed + SAFETY_MARGIN
-
-
-def fetch_candles(picked: date) -> pd.DataFrame:
-    if picked in _cache:
-        return _cache[picked]
-    _cache[picked] = download(*window_for(picked))
-    return _cache[picked]
-
-
-def live_candles() -> tuple[pd.DataFrame, pd.Series]:
-    """1h candles up to now (the current hour still forming) and VIX9D's daily closes, refreshed
-    at most every LIVE_TTL seconds. With LSE_API_KEY: LSE's history since 2016 (any day can be
-    viewed, and the forecast uses the history it was tested on), topped up with Yahoo's bars
-    newer than LSE's last one; without it, Yahoo's last ~2 years."""
-    import levels  # levels imports this module
-    import lse_source
+def live_candles() -> pd.DataFrame:
+    """LSE's 1h candles since 2016 up to its latest bar, refreshed at most every LIVE_TTL seconds."""
+    import lse_source  # lse_source imports this module
 
     global _live
     if _live is None or monotonic() - _live[0] > LIVE_TTL:
-        today = today_market()
-        if os.environ.get("LSE_API_KEY"):
-            candles = lse_source.fetch()
-            recent = download(today - timedelta(days=5), today + timedelta(days=1))
-            candles = pd.concat([candles, recent[recent.index > candles.index[-1]]])
-        else:
-            candles = download(today - timedelta(days=LOOKBACK_DAYS - 1), today + timedelta(days=1))
-        _live = (monotonic(), candles, levels.implied_closes())
-    return _live[1], _live[2]
+        _live = (monotonic(), lse_source.fetch())
+    return _live[1]
 
 
-def download(start: date, end: date) -> pd.DataFrame:
-    df = yf.download(
-        SYMBOL,
-        start=start.isoformat(),
-        end=end.isoformat(),
-        interval=INTERVAL,
-        progress=False,
-        auto_adjust=False,
-        multi_level_index=False,
-    )
-    if df.empty:
-        raise RuntimeError("Yahoo returned no data for this range")
-    df = df[["Open", "High", "Low", "Close", "Volume"]]
-    df.index = df.index.tz_convert(MARKET_TZ)
-    df.index.name = "Datetime"
-    return df
+def available(candles: pd.DataFrame) -> list[date]:
+    first = candles.index[0].date() + timedelta(days=LOOKBACK_DAYS)
+    return [first + timedelta(days=i) for i in range((today_market() - first).days + 1)]
 
 
 def parse_date(raw: str | None) -> date | None:
@@ -113,13 +61,14 @@ def index():
 
 @app.get("/api/available-dates")
 def available_dates():
-    today = today_market()
-    # Only the last few days can ever qualify; checking a week is plenty.
-    days = [today - timedelta(days=i) for i in range(7)]
+    try:
+        days = available(live_candles())
+    except Exception as exc:  # network errors, LSE refusals
+        return jsonify({"error": str(exc)}), 502
     return jsonify(
         {
-            "today": today.isoformat(),
-            "available": sorted(d.isoformat() for d in days if is_available(d)),
+            "today": today_market().isoformat(),
+            "available": [d.isoformat() for d in days],
             "lookback_days": LOOKBACK_DAYS,
             "symbol": SYMBOL,
         }
@@ -131,12 +80,14 @@ def candles():
     picked = parse_date(request.args.get("date"))
     if picked is None:
         return jsonify({"error": "Pass date=YYYY-MM-DD"}), 400
-    if not is_available(picked):
-        return jsonify({"error": f"{picked} has no full {LOOKBACK_DAYS}-day history on Yahoo"}), 422
     try:
-        df = fetch_candles(picked)
-    except Exception as exc:  # network errors, Yahoo refusals
+        all_candles = live_candles()
+    except Exception as exc:  # network errors, LSE refusals
         return jsonify({"error": str(exc)}), 502
+    if picked not in available(all_candles):
+        return jsonify({"error": f"{picked} has no full {LOOKBACK_DAYS}-day history on LSE"}), 422
+    start, end = window_for(picked)
+    df = all_candles[(all_candles.index.date >= start) & (all_candles.index.date < end)]
 
     if request.args.get("format") == "csv":
         buf = StringIO()
@@ -147,7 +98,6 @@ def candles():
             headers={"Content-Disposition": f"attachment; filename=ES_1h_until_{picked}.csv"},
         )
 
-    start, _ = window_for(picked)
     rows = [
         {
             "time": ts.strftime("%Y-%m-%d %H:%M"),
@@ -176,26 +126,25 @@ def candles():
 def lines():
     """The HOD/LOD line of a day (default: the latest), as forecast before the open and after
     each hourly candle so far; the page redraws it live."""
-    from levels import day_lines, today_scale, use_implied  # levels imports this module
-    from quantistat import daily_stats
+    from levels import day_lines  # levels imports this module
+    from quantistat import daily_stats, recent_range
 
     try:
-        candles, closes = live_candles()
-    except Exception as exc:  # network errors, Yahoo refusals
+        candles = live_candles()
+    except Exception as exc:  # network errors, LSE refusals
         return jsonify({"error": str(exc)}), 502
     target = parse_date(request.args.get("date")) or candles.index[-1].date()
     day = candles[candles.index.date == target]
     if len(day) == 0 or day.index[0].hour != 0:
         return jsonify({"error": f"No 00:00 candle for {target}"}), 404
     stats = daily_stats(candles)
-    yardstick, closes = use_implied(stats, closes=closes)
-    rows = day_lines(candles, stats, target, today_scale(stats, yardstick, closes, target, day.Open.iloc[0]))
+    rows = day_lines(candles, stats, target, recent_range(stats, target))
     num = lambda x: None if isnan(x) else round(float(x), 2)
     return jsonify(
         {
             "date": target.isoformat(),
             "live": target == today_market(),
-            "yardstick": yardstick,
+            "yardstick": "r5",
             "candles": [
                 {"hour": ts.hour, "open": float(r.Open), "high": float(r.High), "low": float(r.Low), "close": float(r.Close)}
                 for ts, r in day.iterrows()

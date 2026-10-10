@@ -10,13 +10,13 @@ def candles(n=300, seed=0):
     close = 1000 + rng.normal(0, 5, n).cumsum()
     open_ = close + rng.normal(0, 3, n)
     return pd.DataFrame({"Open": open_, "High": np.maximum(open_, close) + 2, "Low": np.minimum(open_, close) - 2,
-                         "Close": close, "VIX": 15 + rng.normal(0, 1, n)}, index=idx)
+                         "Close": close}, index=idx)
 
 
 def test_features_use_only_earlier_sessions():
     df = candles()
     changed = df.copy()
-    changed.iloc[-1] = changed.iloc[-1] * 1.1  # today's prices and VIX close are not known at its open
+    changed.iloc[-1] = changed.iloc[-1] * 1.1  # today's prices are not known at its open
     a, b = fb.features(df), fb.features(changed)
     assert a[fb.FEATURES].equals(b[fb.FEATURES])
     assert a.month_start.loc["2014-02-03"] == 1 and a.month_start.loc["2014-02-04"] == 0

@@ -12,12 +12,11 @@ distances from the open out of earlier days only, and is scored against what hap
   random day's HOD (LOD): if hit is no higher, the bright lines know nothing about the day.
 
 Methods: the sample (same day of month as the QuantiStat original, same weekday, or all
-days), raw points or rescaled to today's volatility (prior 5-day range r5, or VIX9D /
-VIX's implied daily move), and the bias (bullish = closed above the open) either unknown
+days), raw points or rescaled to today's volatility (prior 5-day range r5), and the bias (bullish = closed above the open) either unknown
 or known: "bias known" peeks at the day's real close, the upper bound of picking the
 bias by hand. Every per-day row goes to scorecard.csv.
 
-Run: LSE_API_KEY=... python scorecard.py [DATE ...]   (dates: print every method's call that day)
+Run: python scorecard.py [DATE ...]   (dates: print every method's call that day)
 """
 
 import sys
@@ -26,7 +25,6 @@ from datetime import date
 import numpy as np
 import pandas as pd
 
-from levels import implied_closes, implied_move
 from quantistat import daily_stats, load_candles
 
 START = date(2018, 1, 1)
@@ -90,12 +88,6 @@ def random_hits(result: pd.DataFrame, seed: int = 0) -> pd.Series:
     return pd.Series(out)
 
 
-def yardstick(stats: pd.DataFrame, symbol: str) -> pd.Series:
-    """A volatility index's implied daily move in points, from its last close before each day."""
-    closes = implied_closes(symbol)
-    return pd.Series([implied_move(closes, d, o) for d, o in stats.open.items()], index=stats.index)
-
-
 SAMPLES = {
     "same day of month": lambda d, past: past.index.map(lambda p: p.day == d.day).to_numpy(bool),
     "same weekday": lambda d, past: past.index.map(lambda p: p.weekday() == d.weekday()).to_numpy(bool),
@@ -109,9 +101,8 @@ def known_bias(pick, bullish: pd.Series):
 
 if __name__ == "__main__":
     stats = daily_stats(load_candles())
-    stats["vix9d"], stats["vix"] = yardstick(stats, "^VIX9D"), yardstick(stats, "^VIX")
     methods = {f"{s}, {'raw' if c is None else c}": (SAMPLES[s], c)
-               for s in SAMPLES for c in (None, "r5", "vix9d", "vix")}
+               for s in SAMPLES for c in (None, "r5")}
     methods |= {f"{name}, bias known": (known_bias(pick, stats.bullish), c)
                 for name, (pick, c) in list(methods.items()) if name.endswith(("raw", "r5"))}
     result = scorecard(stats, methods)

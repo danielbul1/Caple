@@ -1,13 +1,14 @@
 # Caple
 
-Small server that serves hourly ES=F candles from Yahoo Finance.
+Small server that serves hourly ES candles from London Strategic Edge (LSE).
 
 Pick a date in the calendar and get every 1h candle that closed before it (the
 last one is the previous day 23:00 New York time) going back 729 days.
 
-Yahoo only serves 1h data from the last 730 days, counted from the current
-moment, so only dates whose full history fits in that window can be picked.
-In practice that's today, and early in the morning also yesterday.
+All data comes from LSE (https://londonstrategicedge.com/data): ES.F 1h bars since
+mid 2016, cached to `lse_ES.F_1h.csv` (later runs only fetch new bars), and the US
+economic calendar. The API key is in `LSE.md`; an `LSE_API_KEY` environment variable
+overrides it. Any date with two years of LSE history before it (from mid 2018) can be picked.
 
 ## Run
 
@@ -34,12 +35,11 @@ python levels.py backtest          # walk-forward calibration on all the data
 At the open, or after any hourly candle, prints the chance the day's high and low
 are already in and, if they go further, the prices reached on 75% / 50% / 25% of
 similar past days (same hour, price in the same fifth of the range so far, scaled
-to today's VIX9D implied daily move). On LSE's 10 years walk-forward (2017-2026, 2,210
-days) VIX9D beat the prior 5-day range at the open (pinball -2%, paired t -5), less so
-later; VIX1D was no better and only starts in 2023. `python levels.py backtest r5` scores
-the old yardstick. Everything is calibrated: at 9:00 the HOD was forecast already in on
-39.5% of days and was on 39.0%; the levels were reached on 76/54/27% of days. The miss of
-the median shrinks from ~17-20 points at the open to ~10-12 at 9:00 and ~6 at 12:00.
+to today's prior 5-day average range). VIX9D's implied move scaled ~2% better at the open
+(pinball, paired t -5) but came from Yahoo, which is no longer used. On LSE's 10 years
+walk-forward (2017-2026, 2,210 days) everything is calibrated: at 9:00 the HOD was forecast
+already in on 38.6% of days and was on 39.0%; the levels were reached on 76/52/27% of days.
+The miss of the median shrinks from ~17-21 points at the open to ~10-12 at 9:00 and ~5-6 at 12:00.
 
 ## What improves accuracy (tested on LSE 2018-2026, walk-forward)
 
@@ -47,7 +47,7 @@ Change in HOD+LOD pinball loss vs the model above; negative is better, t in brac
 
 | Idea (source) | open | 9:00 | 12:00 | Kept? |
 |---|---|---|---|---|
-| VIX9D instead of 5-day range (implied vol, Albers 2025) | -2% (-5) | -1% | ~0 | yes |
+| VIX9D instead of 5-day range (implied vol, Albers 2025) | -2% (-5) | -1% | ~0 | was; dropped with Yahoo |
 | Position in fifths of the range so far, not halves | 0 | -3% (-5) | -4% (-6) | yes |
 | HAR range forecast (Corsi 2009) on top of VIX9D | -0.6% (-3) | ~0 | ~0 | no, too small |
 | Match days on share of the range used so far ("% ATR used") | 0 | -0.3% | ~0 | no |
@@ -67,7 +67,8 @@ python scorecard.py 2024-12-26 2025-01-02   # all methods, 2018-2026, plus those
 ```
 
 Every day since 2018, before the open, each method builds HOD/LOD levels from earlier days
-only and is scored against the day (per-day rows in `scorecard.csv`). On 2,089 days:
+only and is scored against the day (per-day rows in `scorecard.csv`). On 2,089 days (VIX9D
+numbers are from before Yahoo was dropped; scorecard.py now compares raw points and r5):
 
 - Scaling matters most: raw points (QuantiStat) lose 28.3/31.5 points (HOD/LOD pinball)
   and their "75%" level is reached on 86% of days (prices rose since 2018); scaled by VIX9D
@@ -150,28 +151,24 @@ brighter and thicker = more days. The dashed white lines are the high/low so far
 chance it is already the final one. It is recomputed before the open and after every
 hourly candle (the forming candle counts, data refreshes every 2 minutes, the page every
 minute); the "מצב" picker replays any earlier hour of the day.
-With `LSE_API_KEY` set the page runs on LSE's history since 2016, so any date since then can
-be picked, and the forecast uses the same history it was tested on; Yahoo only fills in bars
-newer than LSE's last one (the hour still forming). Without the key it has Yahoo's last 2 years.
+The page runs on LSE's history since 2016, so any date since then can be viewed, and the
+forecast uses the same history it was tested on. It only shows bars LSE has closed, so the
+hour still forming appears once LSE publishes it.
 No single level is "touch once and it's the HOD": walk-forward (`python levels.py backtest`,
 `*_past_line`) on days price reached the median level, it went on another ~25-38 points on
 average before 9:00 and ~17-24 after 12:00.
 
 ## QuantiStat charts
 
-With a free London Strategic Edge key in `LSE_API_KEY`
-(https://londonstrategicedge.com/data) the charts and backtest use 10 years of
-ES.F 1h bars (cached to `lse_ES.F_1h.csv`, only new bars are fetched later);
-without it they use Yahoo's last 2 years. On the 456 days both cover they agree
-on the HOD hour 98% of the time.
+The charts and backtest use LSE's 10 years of ES.F 1h bars.
 
 ```bash
 python quantistat.py 2026-10-12 7840   # target day (default today), optional 00:00 open
 ```
 
-Uses the same two years of 1h candles and keeps only past days on the target's
+Keeps only past days on the target's
 weekday (calendar days 00:00-23:00 NY time). Quarterly expiry weeks and days where
-Yahoo's continuous ES=F jumps between contracts are dropped (bad HOD/LOD). Saves `time_based.png` (hour
+the continuous series jumps between contracts are dropped (bad HOD/LOD). Saves `time_based.png` (hour
 of HOD/LOD split by bullish/bearish day) and `price_based.png` (HOD/LOD distance
 from the open in points, split by bias; above 0 = HOD, below 0 = LOD, brighter =
 more often), and prints per bias the usual HOD/LOD hours and the levels the
@@ -185,23 +182,25 @@ beats same weekday or simply all days (bias taken as known).
 month): direction fixed on 2016-2021, scored once on 2022+. None beat always
 guessing bullish, so the charts still take the bias as your input.
 `python seasonal.py 2026-10-12` draws the market-bulls.com style seasonal
-tendencies (10/5/2-year average path from Yahoo daily ES since 2000) and prints
+tendencies (10/5/2-year average path of LSE's daily closes, since mid 2016) and prints
 that day's seasonal bias; bias.py tests it too, and it does not beat always
 bullish either (2022+: 50.9% when all three windows agree vs 49.7%).
 `python forecast_bias.py` tests the Discord "statistical data" ideas (markov-process,
-sarimax, bias-forecasting) walk-forward on 6,560 Yahoo daily sessions since 2000: each
-model is refit every January on earlier years only and scored on 2016-2026 (2,709
-sessions) by Brier score against the base rate. None passes (mean edge > 2 SE):
+sarimax, bias-forecasting) walk-forward on LSE's calendar days (2,445 days since mid 2016,
+the days quantistat.py keeps): each model is refit every January on earlier years only and
+scored on 2019-2026 (1,851 days) by Brier score against the base rate. None passes (mean
+edge > 2 SE); every one is worse than the base rate, gradient boosting significantly:
 
 | model | Brier edge (x1e-4) | 2 SE | accuracy | always bullish |
 |---|---|---|---|---|
-| Markov chain, last 1/2/3 days | +2.0 / +4.8 / +1.7 | 5.5 / 8.1 / 9.8 | 54.6-54.8% | 54.6% |
-| Markov, last 2 days + big/small range | +4.9 | 12.4 | 55.0% | 54.6% |
-| SARIMAX(1,0,1)x(1,0,1,5) + VIX change, range | -19.0 (worse) | 16.4 | 53.5% | 54.6% |
-| logistic regression, 11 features | -2.7 | 8.8 | 54.7% | 54.6% |
-| gradient-boosted trees, same features | -2.4 | 13.7 | 54.3% | 54.6% |
+| Markov chain, last 1/2/3 days | -4.6 / -6.6 / -14.4 | 10.7 / 13.1 / 19.6 | 53.3-54.3% | 54.3% |
+| Markov, last 2 days + big/small range | -25.5 | 21.7 | 53.1% | 54.3% |
+| SARIMAX(1,0,1)x(1,0,1,5) + range ratio | -19.4 | 30.5 | 52.5% | 54.3% |
+| logistic regression, 8 features | -14.8 | 23.4 | 53.3% | 54.3% |
+| gradient-boosted trees, same features | -48.7 (worse) | 32.6 | 52.9% | 54.3% |
 
 The Markov chains mostly reduce to "always bullish" (bullish was the likelier side after
-almost every state), and the best edge, 0.0005 of Brier, is noise in both halves (2016-2020,
-2021-2026). Daily direction stays unpredictable, so the bias stays your input.
+almost every state). The same models on 26 years of Yahoo daily sessions (2000-2026, before
+Yahoo was dropped) gave the same answer. Daily direction stays unpredictable, so the bias
+stays your input.
 Tests: `pip install pytest && pytest`.

@@ -38,7 +38,6 @@ def test_in_band_means_the_real_hod_lod_landed_between_the_75_and_25_percent_lev
 
 
 def test_a_range_scores_each_day_exactly_as_scoring_it_alone(monkeypatch):
-    monkeypatch.setattr(journal, "use_implied", lambda stats: None)  # keep the 5-day range, no download
     rng = np.random.default_rng(0)
     idx = pd.date_range("2026-10-01", "2026-11-28 23:00", freq="h", tz="America/New_York")
     close = 6000 + rng.normal(0, 3, len(idx)).cumsum()

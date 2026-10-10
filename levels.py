@@ -3,7 +3,8 @@
 Before the open only the open is known; after each hourly candle the day's high
 and low so far are known too. For every past day we measure how much further the
 high still rose and the low still fell after that point, in units of that day's
-VIX9D implied daily move (so calm and wild days compare). Similar past days get the weight:
+prior 5-day average range (so calm and wild days compare; VIX9D's implied move did ~2% better
+at the open but came from Yahoo, which is no longer used). Similar past days get the weight:
 half on the days where price at that hour sat in the same fifth of the range so far as today
 (halves cut the miss ~10% at 9:00; fifths, picked on 2018-2021, cut the pinball loss another
 ~4% at 9:00 and 12:00 on 2022-2026, paired t -4.6 and -5.0, and changed nothing before 5:00),
@@ -21,17 +22,14 @@ yardstick:
 
 Run: python levels.py [DATE] [HOUR]   (HOUR = after that hour's candle, "open" for the
      pre-open view; omit for the latest candle of DATE)
-     python levels.py backtest [r5]   (walk-forward calibration on all the data; r5 forces the
-                                       5-day range yardstick, to compare with VIX9D)
+     python levels.py backtest        (walk-forward calibration on all the data)
 """
 
-import os
 import sys
 from datetime import date
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
 
 import lse_source
 from quantistat import REACH, daily_stats, load_candles, recent_range, today_market
@@ -161,20 +159,6 @@ def day_lines(candles: pd.DataFrame, stats: pd.DataFrame, target: date, today_ra
     return out
 
 
-def implied_closes(symbol: str = "^VIX9D") -> pd.Series:
-    """Daily closes of a Cboe volatility index (VIX9D: implied S&P volatility over 9 days, since 2011)."""
-    closes = yf.download(symbol, period="max", interval="1d", progress=False, multi_level_index=False).Close
-    closes.index = closes.index.date
-    return closes
-
-
-def implied_move(closes: pd.Series, day: date, open_price: float) -> float:
-    """The last index close before `day` (the 00:00 open comes before that day's close) as the
-    implied one-day move in points (one standard deviation): a yardstick known at the open."""
-    before = closes[closes.index < day]
-    return before.iloc[-1] / 100 / np.sqrt(252) * open_price if len(before) else np.nan
-
-
 def walk_forward(stats: pd.DataFrame, hi: pd.DataFrame, lo: pd.DataFrame, close: pd.DataFrame,
                  warmup: int = 250) -> pd.DataFrame:
     """Each day forecast only from earlier days; did the HOD/LOD reach each level?"""
@@ -207,33 +191,13 @@ def walk_forward(stats: pd.DataFrame, hi: pd.DataFrame, lo: pd.DataFrame, close:
     return pd.DataFrame(rows)
 
 
-def use_implied(stats: pd.DataFrame, force_r5: bool = False, closes: pd.Series | None = None) -> tuple[str, pd.Series]:
-    """Scale each day by VIX9D's implied daily move instead of its prior 5-day range. Walk-forward
-    on LSE's 2017-06..2026-10 (2,210 days) it cut the pinball loss ~2% at the open (paired t -5), less
-    later, nothing from 12:00 on; VIX1D did no better on 2024-2026 and starts only in 2023.
-    Rewrites stats.r5 (the scale column the forecast reads) on the same days; returns the
-    yardstick's name and the VIX9D closes (downloaded unless given)."""
-    closes = implied_closes() if closes is None else closes
-    move = pd.Series([implied_move(closes, d, o) for d, o in stats.open.items()], index=stats.index)
-    if force_r5 or move[stats.r5.notna()].isna().any():
-        return "r5", closes
-    stats["r5"] = move.where(stats.r5.notna())
-    return "VIX9D", closes
-
-
-def today_scale(stats: pd.DataFrame, yardstick: str, closes: pd.Series, target: date, open_price: float) -> float:
-    return recent_range(stats, target) if yardstick == "r5" else implied_move(closes, target, open_price)
-
-
 if __name__ == "__main__":
     candles = load_candles()
     stats = daily_stats(candles)
     hi, lo, close = through_hour(candles)
-    # `python levels.py backtest r5` scores the old yardstick for comparison.
-    yardstick, closes = use_implied(stats, "r5" in sys.argv[2:])
     if sys.argv[1:2] == ["backtest"]:
         result = walk_forward(stats.dropna(), hi, lo, close)
-        print(f"{result.day.nunique()} days, {result.day.min()} .. {result.day.max()}, scaled by {yardstick}")
+        print(f"{result.day.nunique()} days, {result.day.min()} .. {result.day.max()}, scaled by the 5-day range")
         print("*_done_pred vs *_done_real: forecast vs real share of days already done at that hour;")
         print("HOD_75 etc.: on days that went further, share reaching the '75%' level (honest: ~0.75);")
         print("*_miss: average points between the overall median forecast (the line) and the real HOD/LOD;")
@@ -241,7 +205,7 @@ if __name__ == "__main__":
         print(result.groupby("hour", sort=False).mean(numeric_only=True).round(3).to_string())
         sys.exit()
     try:
-        events = lse_source.events() if os.environ.get("LSE_API_KEY") else {}
+        events = lse_source.events()
     except OSError as e:  # the calendar only adds a warning; never block the forecast
         print(f"(event calendar unavailable: {e})")
         events = {}
@@ -254,12 +218,12 @@ if __name__ == "__main__":
     if hour is not None and hour > day.index[-1].hour:
         sys.exit(f"The {hour}:00 candle of {target} is not in yet (latest {day.index[-1].hour}:00).")
     open_price = day.Open.iloc[0]
-    today_range = today_scale(stats, yardstick, closes, target, open_price)
+    today_range = recent_range(stats, target)
     f = next(r for r in day_lines(candles[candles.index.date <= target], stats, target, today_range) if r["hour"] == hour)
     hod_now, lod_now = f["high"], f["low"]
     when = "before the open" if hour is None else f"after the {hour}:00 candle: high {hod_now:.2f}, low {lod_now:.2f}"
     kind = f"{events[target]} day, " if target in events else ""
-    print(f"{target} {kind}open {open_price:.2f}, {"5-day range" if yardstick == "r5" else "VIX9D move"} {today_range:.1f}, {when}  ({f['n']} similar past days)")
+    print(f"{target} {kind}open {open_price:.2f}, 5-day range {today_range:.1f}, {when}  ({f['n']} similar past days)")
     for side in ("HOD", "LOD"):
         lv = " / ".join(f"{x:.2f}" for x in f[side]["levels"])
         print(f"  {side}: already in on {f[side]['done']:.0%} of similar days; "
