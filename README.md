@@ -208,8 +208,9 @@ Walk-forward, 2,326 days (2017-2026):
 | 0.5 x range (23.1 pts) | +0.7% (t +2.5) / +0.2% (t +1.7) | -1.07 (t -3.2) / +0.56 (t +1.0) |
 
 The odds are calibrated (said 0.65 -> was 0.66) but they are the random walk's: once the
-pullback is known, the leg's length, its age and the hour add nothing, and every cutoff loses
-about the cost per trade (gross ~0) for the model and the plain pullback rule alike (the one
+pullback is known, the leg's length, its age and the hour add at most 0.5%, and every cutoff
+loses money for the model and the plain pullback rule alike (gross ~0 at cutoffs 0.7-0.8, below
+zero even before costs at 0.5; trade t counts trades as independent, so it runs a bit high; the one
 positive cell, 23-point legs on 2022-26, lost on 2017-21 and the pullback rule matches it). So the turn
 of a leg can't be told at the moment it happens from price alone, the same as the day's
 direction (bias.py, forecast_bias.py). A first version restarted the zigzag every midnight and
