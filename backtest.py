@@ -17,8 +17,7 @@ Run: python backtest.py
 
 import pandas as pd
 
-from app import fetch_candles, today_market
-from quantistat import daily_stats, reach_levels
+from quantistat import daily_stats, load_candles, reach_levels
 
 SAMPLERS = {
     "same day of month": lambda d: lambda past: past.day == d.day,
@@ -39,7 +38,7 @@ def backtest(stats: pd.DataFrame, warmup: int = 120) -> pd.DataFrame:
         for name, sample in samples.items():
             same_bias = sample[sample.bullish == day.bullish]
             time_score = ((same_bias.hod_hour == day.hod_hour).mean() + (same_bias.lod_hour == day.lod_hour).mean()) / 2
-            levels = reach_levels(same_bias)[side]
+            levels = reach_levels(same_bias, day.r5)[side]
             reached = [actual >= lvl if day.bullish else actual <= lvl for lvl in levels]
             rows.append({"day": stats.index[i], "method": name, "time_score": time_score,
                          "price_error": abs(levels[1] - actual),
@@ -48,7 +47,7 @@ def backtest(stats: pd.DataFrame, warmup: int = 120) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
-    result = backtest(daily_stats(fetch_candles(today_market())))
+    result = backtest(daily_stats(load_candles()))
     print(f"{result.day.nunique()} test days, {result.day.min()} .. {result.day.max()}\n")
     print(result.groupby("method").mean(numeric_only=True).round(3).to_string())
     wide = result.pivot(index="day", columns="method")

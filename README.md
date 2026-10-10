@@ -26,6 +26,12 @@ Open http://localhost:5000.
 
 ## QuantiStat charts
 
+With a free London Strategic Edge key in `LSE_API_KEY`
+(https://londonstrategicedge.com/data) the charts and backtest use 10 years of
+ES.F 1h bars (cached to `lse_ES.F_1h.csv`, only new bars are fetched later);
+without it they use Yahoo's last 2 years. On the 456 days both cover they agree
+on the HOD hour 98% of the time.
+
 ```bash
 python quantistat.py 2026-10-12 7840   # target day (default today), optional 00:00 open
 ```
@@ -37,6 +43,8 @@ of HOD/LOD split by bullish/bearish day) and `price_based.png` (HOD/LOD distance
 from the open in points, split by bias; above 0 = HOD, below 0 = LOD, brighter =
 more often), and prints per bias the usual HOD/LOD hours and the levels the
 HOD/LOD reached on 75% / 50% / 25% of days (as prices when the open is given).
+Levels are rescaled to today's volatility (each day's distance divided by its
+prior 5-day average range, times today's), so old low-volatility years still count.
 `python backtest.py` checks, walk-forward, whether picking days by day-of-month
 beats same weekday or simply all days (bias taken as known).
 Tests: `pip install pytest && pytest`.

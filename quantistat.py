@@ -1,6 +1,7 @@
 """QuantiStat-style HOD/LOD statistics for ES=F, drawn with matplotlib.
 
-Takes the two years of hourly candles that app.py serves and looks only at past
+Takes hourly ES candles (10 years from LSE with LSE_API_KEY set, else the two years
+of Yahoo data app.py serves) and looks only at past
 days on the same weekday as the target day (e.g. every Monday). backtest.py showed
 this beats the original tool's same day-of-month, which leaves only ~16 noisy days.
 A day is a calendar day in New York time (00:00-23:00), so it opens at the
@@ -17,6 +18,7 @@ A day is a calendar day in New York time (00:00-23:00), so it opens at the
 Run: python quantistat.py [TARGET_DATE] [OPEN]   (default: today, distances only)
 """
 
+import os
 import sys
 from datetime import date
 
@@ -25,6 +27,7 @@ import pandas as pd
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 
+import lse_source
 from app import fetch_candles, today_market
 
 HOURS = range(24)
@@ -41,6 +44,11 @@ def in_expiry_week(d: date) -> bool:
     contracts inside single candles, which the gap check can't see."""
     third_friday = 15 + (4 - date(d.year, d.month, 15).weekday()) % 7
     return d.month % 3 == 0 and third_friday - 4 <= d.day <= third_friday
+
+
+def load_candles() -> pd.DataFrame:
+    """Ten years of ES.F from LSE when LSE_API_KEY is set, else Yahoo's last two years."""
+    return lse_source.fetch() if os.environ.get("LSE_API_KEY") else fetch_candles(today_market())
 
 
 def daily_stats(candles: pd.DataFrame) -> pd.DataFrame:
@@ -62,23 +70,35 @@ def daily_stats(candles: pd.DataFrame) -> pd.DataFrame:
     })
     stats["bullish"] = stats.close > stats.open
     keep = (stats.first_hour == 0) & ~stats.index.isin(rolled_days) & ~stats.index.map(in_expiry_week)
-    return stats[keep].drop(columns="first_hour")
+    stats = stats[keep].drop(columns="first_hour")
+    stats["r5"] = (stats.high - stats.low).rolling(5).mean().shift()  # known before the day opens
+    return stats
+
+
+def recent_range(stats: pd.DataFrame, target: date) -> float:
+    """Average high-low range of the 5 days before target: today's volatility yardstick."""
+    before = stats[[d < target for d in stats.index]]
+    return (before.high - before.low).tail(5).mean()
 
 
 def same_weekday(stats: pd.DataFrame, target: date) -> pd.DataFrame:
     return stats[[d.weekday() == target.weekday() and d < target for d in stats.index]]
 
 
-def level_counts(stats: pd.DataFrame) -> pd.Series:
-    """How many times each HOD/LOD distance from the open (rounded to a point) occurred."""
-    distances = pd.concat([stats.high - stats.open, stats.low - stats.open]).round()
+def level_counts(stats: pd.DataFrame, today_range: float) -> pd.Series:
+    """How many times each HOD/LOD distance from the open (rounded to a point) occurred,
+    in today's points: each day is rescaled by today's 5-day range over its own."""
+    k = today_range / stats.r5
+    distances = pd.concat([(stats.high - stats.open) * k, (stats.low - stats.open) * k]).round()
     return distances.value_counts().sort_index()
 
 
-def reach_levels(days: pd.DataFrame) -> dict[str, list[float]]:
-    """Distances from the open that the HOD and the LOD reached on 75%, 50% and 25% of days."""
-    return {"HOD": [(days.high - days.open).quantile(1 - p) for p in REACH],
-            "LOD": [(days.low - days.open).quantile(p) for p in REACH]}
+def reach_levels(days: pd.DataFrame, today_range: float) -> dict[str, list[float]]:
+    """Distances from the open that the HOD and the LOD reached on 75%, 50% and 25% of days,
+    rescaled to today's volatility (raw points from 2016 would be far too small today)."""
+    k = today_range / days.r5
+    return {"HOD": [((days.high - days.open) * k).quantile(1 - p) for p in REACH],
+            "LOD": [((days.low - days.open) * k).quantile(p) for p in REACH]}
 
 
 def plot_time_based(stats: pd.DataFrame):
@@ -96,10 +116,10 @@ def plot_time_based(stats: pd.DataFrame):
     return fig
 
 
-def plot_price_based(stats: pd.DataFrame):
+def plot_price_based(stats: pd.DataFrame, today_range: float):
     plt.style.use("dark_background")
     groups = {name: stats[stats.bullish == bullish] for bullish, name, _ in BIASES}
-    counts = {name: level_counts(days) for name, days in groups.items()}
+    counts = {name: level_counts(days, today_range) for name, days in groups.items()}
     norm = Normalize(0, max(c.max() for c in counts.values() if len(c)))
     fig, axes = plt.subplots(1, 2, figsize=(14, 6), sharey=True)
     for ax, (name, levels) in zip(axes, counts.items()):
@@ -107,16 +127,16 @@ def plot_price_based(stats: pd.DataFrame):
             ax.axhline(points, color=plt.cm.viridis(norm(count)), linewidth=2 * count)
         ax.set_title(f"HOD/LOD If {name} Bias (n={len(groups[name])})")
         ax.grid(alpha=0.2)
-    axes[0].set_ylabel("points")
+    axes[0].set_ylabel(f"points (scaled to today's 5-day range, {today_range:.0f})")
     fig.colorbar(ScalarMappable(norm, "viridis"), ax=axes, label="heatmap")
     return fig
 
 
-def print_plan(stats: pd.DataFrame, open_price: float | None):
+def print_plan(stats: pd.DataFrame, today_range: float, open_price: float | None):
     for bullish, name, _ in BIASES:
         days = stats[stats.bullish == bullish]
         print(f"\n{name} bias ({len(days)} days)")
-        for kind, levels in reach_levels(days).items():
+        for kind, levels in reach_levels(days, today_range).items():
             hours = ", ".join(f"{h}:00" for h in days[f"{kind.lower()}_hour"].value_counts().index[:2])
             reached = " / ".join(f"{lvl:+.1f}" + (f" = {open_price + lvl:.2f}" if open_price else "") for lvl in levels)
             print(f"  {kind}: most often at {hours}; reached {reached} on 75% / 50% / 25% of days")
@@ -125,10 +145,12 @@ def print_plan(stats: pd.DataFrame, open_price: float | None):
 if __name__ == "__main__":
     target = date.fromisoformat(sys.argv[1]) if len(sys.argv) > 1 else today_market()
     open_price = float(sys.argv[2]) if len(sys.argv) > 2 else None
-    stats = same_weekday(daily_stats(fetch_candles(today_market())), target)
-    print(f"{len(stats)} past {target:%A}s")
-    print_plan(stats, open_price)
+    all_days = daily_stats(load_candles())
+    today_range = recent_range(all_days, target)
+    stats = same_weekday(all_days, target)
+    print(f"{len(stats)} past {target:%A}s, from {stats.index[0]}; last 5 days' average range {today_range:.1f} points")
+    print_plan(stats, today_range, open_price)
     plot_time_based(stats).savefig("time_based.png")
-    plot_price_based(stats).savefig("price_based.png")
+    plot_price_based(stats, today_range).savefig("price_based.png")
     print("Saved time_based.png and price_based.png")
     plt.show()
