@@ -51,7 +51,10 @@ on the log scale, fit on 2016-2021. It replaced the prior 5-day average range an
 what Yahoo's VIX9D gave (below). On LSE's 10 years walk-forward (2017-2026, 2,193 days)
 everything is calibrated: at 9:00 the HOD was forecast already in on 39.0% of days and was
 on 39.0%; the levels were reached on 76/53/28% of days. The miss of the median shrinks from
-~17-20 points at the open to ~10-12 at 9:00 and ~5-6 at 12:00.
+~17-20 points at the open to ~10-12 at 9:00 and ~5-6 at 12:00. From 2:00 on, the chance the HOD/LOD
+is already in averages the similar days' share with a driftless random walk's (reflection
+principle, with the share of the day's variance still to come after that hour): log loss 2-9%
+lower at every checkpoint in both halves of the data.
 
 ## What improves accuracy (tested on LSE 2018-2026, walk-forward)
 
@@ -65,6 +68,7 @@ Change in HOD+LOD pinball loss vs the model above; negative is better, t in brac
 | On FOMC/CPI days, a third of the weight on past days of the same event (2022-2026) | -0.1% (-2.1) | -0.1% | -0.3% (-2.0) | no: on the 143 event days -0.3% at 9:00, -1.8% (-1.5) at 12:00, noise |
 | Overnight gap from yesterday's 16:00 close as a k-NN dimension (also at the open) | +0.1% | +0.4% (+1.9) | +0.6% (+2.9) | no, worse |
 | Learn only from the last two years (`--2y`, as the original tool), 2022-2026 | +0.3% (+2.0) | +1.3% (+4.5) | +1.0% (+3.6) | no, worse at every hour (still calibrated); kept as an option |
+| Average "already in" with a random walk's (reflection principle, the day's hourly variance profile; Mok, Lam & Li 2000) | - | log loss -2.9% / -1.8% (t -6.3 / -4.6) | -3.5% / -3.5% (t -6.3 / -6.1) | yes, from 2:00 on (2017-21 / 2022-26; 15:00 -8.6% / -3.4%, calls right +1-4 points); the random walk's levels alone were as good as the analogs but averaging them in did not help |
 | Parkinson vol alone, 5-day mean or EWM (half-life 3) | -0.9/-1.1% (-3.7/-3.0) | ~0 | ~0 | no, HAR is better |
 | HAR on daily ranges / + the 18:00-23:00 evening range | log-range error -6% / -5% (HAR-Parkinson -15%) | | | no |
 | Position in fifths of the range so far, not halves | 0 | -3% (-5) | -4% (-6) | yes |

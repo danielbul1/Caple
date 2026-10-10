@@ -198,3 +198,20 @@ def test_plot_draws_one_line_per_bin_seen_twice_in_points_from_the_open():
     fig = levels.plot_heat(f, open_price=100.0, title="t")
     ys = sorted(round(l.get_ydata()[0], 2) for l in fig.axes[0].lines if l.get_linestyle() == "-" and l.get_linewidth() > 1.5)
     assert ys == [-10.0, 10.0, 30.0]  # the 120 bin (one day, under half the brightest) is hidden
+
+
+def test_random_walk_done_follows_the_reflection_principle():
+    from scipy.stats import norm
+    sd = levels.RW_SIGMA * np.sqrt(levels.REMAINING[9])
+    assert levels.rw_done(0.0, 9) == 0.0                     # at the high it always goes on
+    assert np.isclose(levels.rw_done(sd, 9), 2 * norm.cdf(1.0) - 1)  # one sd below the high: 68%
+    assert levels.rw_done(0.1, 23) == 1.0                    # no time left: the high is in
+
+
+def test_odds_averages_the_analogs_share_with_the_random_walk_and_keeps_the_levels():
+    past = np.array([0.0, 1.0, 2.0])
+    done_e, lv_e = levels.odds(past, 100.0, 1, 10.0)
+    done, lv = levels.odds(past, 100.0, 1, 10.0, rw=0.8)
+    assert np.isclose(done, (done_e + 0.8) / 2) and lv == lv_e
+    f = levels.forecast(pd.DataFrame({"up": past, "down": past}), 100.0, 90.0, 10.0, rw=[0.8, 0.2])
+    assert np.isclose(f["HOD"]["done"], (done_e + 0.8) / 2) and np.isclose(f["LOD"]["done"], (done_e + 0.2) / 2)

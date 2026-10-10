@@ -32,6 +32,7 @@ from datetime import date, timedelta
 
 import numpy as np
 import pandas as pd
+from scipy.stats import norm
 
 import lse_source
 from quantistat import REACH, daily_stats, load_candles, today_market
@@ -49,6 +50,21 @@ K_NEAREST = 150  # 300 was worse on 2018-2021 from 9:00 on
 # HAR_SCALE (e^intercept) only makes it read as a typical day's range in points.
 HAR = (0.59, 0.29, 0.10)
 HAR_SCALE = 1.57
+# Share of a day's variance (hourly Parkinson, 2016-2021) still to come after each hour's candle,
+# for the random walk the "already in" odds blend in (see rw_done).
+REMAINING = np.array([0.981, 0.962, 0.937, 0.898, 0.868, 0.845, 0.819, 0.794, 0.741, 0.637, 0.533, 0.455,
+                      0.391, 0.331, 0.264, 0.146, 0.12, 0.12, 0.097, 0.08, 0.057, 0.028, 0.012, 0.0])
+RW_SIGMA = 1 / np.sqrt(8 / np.pi)  # a random walk's daily sd per unit of its expected range (the yardstick)
+
+
+def rw_done(dist: float, hour: int) -> float:
+    """Chance a driftless random walk never gets back above a high `dist` yardsticks above price in
+    the rest of the day (reflection principle: its maximum is |N(0, sd)|). ES intraday is close to
+    one (Mok, Lam & Li 2000): averaging this with the analogs' share cut the log loss of "already
+    in" 2-9% at every checkpoint from 2:00 on, 2017-2021 and 2022-2026 alike (paired t -3.6 to
+    -8.1), with more calls right at 5:00 and 15:00. Blending the levels too did not help."""
+    sd = RW_SIGMA * np.sqrt(REMAINING[hour])
+    return 1.0 if sd <= 0 else 2 * norm.cdf(dist / sd) - 1
 
 
 def through_hour(candles: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -111,14 +127,15 @@ def extras(stats: pd.DataFrame, hi: pd.DataFrame, lo: pd.DataFrame, hour: int | 
 
 
 def odds(extra: np.ndarray, now: float, sign: int, today_range: float,
-         w: np.ndarray | None = None) -> tuple[float, list[float]]:
+         w: np.ndarray | None = None, rw: float | None = None) -> tuple[float, list[float]]:
     """(share already done, levels reached on 75/50/25% of the days that went further), each past
-    day counted by its weight."""
+    day counted by its weight; the share is averaged with rw (rw_done) when given."""
     w = np.ones(len(extra)) if w is None else w
     more = (extra > 1e-9) & (w > 0)
     if not more.any():
-        return 1.0, [np.nan] * len(REACH)
-    return (1 - w[more].sum() / w.sum(),
+        return 1.0 if rw is None else (1 + rw) / 2, [np.nan] * len(REACH)
+    done = 1 - w[more].sum() / w.sum()
+    return (done if rw is None else (done + rw) / 2,
             [now + sign * wquantile(extra[more], w[more], 1 - p) * today_range for p in REACH])
 
 
@@ -167,16 +184,18 @@ def plot_heat(f: dict, open_price: float, title: str):
 
 
 def forecast(ex: pd.DataFrame, high_so_far: float, low_so_far: float, today_range: float,
-             w: np.ndarray | None = None) -> dict:
+             w: np.ndarray | None = None, rw: tuple[float, float] | None = None) -> dict:
     """Per side: done, levels, and line = the median final HOD/LOD over all similar days (the
-    best single guess; it sits on the high/low so far once most similar days were done)."""
+    best single guess; it sits on the high/low so far once most similar days were done). rw =
+    the random walk's "already in" for the HOD and the LOD, averaged into done."""
     w = np.ones(len(ex)) if w is None else w
     keep = ex.notna().all(axis=1).to_numpy() & (w > 0)
     ex, w = ex[keep], w[keep]
-    return {side: dict(zip(["done", "levels"], odds(ex[col].to_numpy(), now, sign, today_range, w)),
+    return {side: dict(zip(["done", "levels"], odds(ex[col].to_numpy(), now, sign, today_range, w,
+                                                    None if rw is None else rw[k])),
                        line=now + sign * wquantile(ex[col].to_numpy(), w, 0.5) * today_range,
                        heat=heat(ex[col].to_numpy(), now, sign, today_range))
-            for side, col, now, sign in [("HOD", "up", high_so_far, 1), ("LOD", "down", low_so_far, -1)]}
+            for side, col, now, sign, k in [("HOD", "up", high_so_far, 1, 0), ("LOD", "down", low_so_far, -1, 1)]}
 
 
 def day_lines(candles: pd.DataFrame, stats: pd.DataFrame, target: date, today_range: float,
@@ -189,17 +208,18 @@ def day_lines(candles: pd.DataFrame, stats: pd.DataFrame, target: date, today_ra
     for hour in [None, *range(day.index[-1].hour + 1)]:  # hours without a candle (17:00 halt) carry on
         first = target - timedelta(days=lookback_days) if lookback_days else date.min
         history = stats[[first <= d < target for d in stats.index]]
-        ex, w = extras(history, hi, lo, hour), np.ones(len(history))
+        ex, w, today_near = extras(history, hi, lo, hour), np.ones(len(history)), np.zeros(2)
         if hour is not None:
             where = position(hi, lo, close, hour)
             near = nearness(*(x[hour].reindex(history.index) for x in (hi, lo, close)), history.r5)
             ok = ~np.isnan(near).any(axis=1) & ex.notna().all(axis=1).to_numpy()  # same days as walk_forward
-            ex, w = ex[ok], similar(where.reindex(history.index).to_numpy()[ok], near[ok], where[target],
-                                    nearness(hi.loc[target, hour], lo.loc[target, hour], close.loc[target, hour], today_range))
+            today_near = nearness(hi.loc[target, hour], lo.loc[target, hour], close.loc[target, hour], today_range)[0]
+            ex, w = ex[ok], similar(where.reindex(history.index).to_numpy()[ok], near[ok], where[target], today_near)
         high = day.Open.iloc[0] if hour is None else hi.loc[target, hour]
         low = day.Open.iloc[0] if hour is None else lo.loc[target, hour]
         out.append({"hour": hour, "high": high, "low": low, "n": int((w > 0).sum()),
-                    **forecast(ex, high, low, today_range, w)})
+                    **forecast(ex, high, low, today_range, w,
+                               None if hour is None else [rw_done(x, hour) for x in today_near])})
     return out
 
 
@@ -246,7 +266,7 @@ def walk_forward(stats: pd.DataFrame, hi: pd.DataFrame, lo: pd.DataFrame, close:
             day, r = stats.iloc[i], stats.r5.iloc[i]
             row = {"hour": "open" if hour is None else f"{hour}:00", "day": stats.index[i]}
             for side, col, now, sign, actual in [("HOD", 0, hi_now[i], 1, day.high), ("LOD", 1, lo_now[i], -1, day.low)]:
-                done, lvls = odds(past[:, col], now, sign, r, w)
+                done, lvls = odds(past[:, col], now, sign, r, w, None if hour is None else rw_done(near[i][col], hour))
                 went_further = sign * (actual - now) > 1e-9
                 row |= {f"{side}_done_pred": done, f"{side}_done_real": float(not went_further),
                         **{f"{side}_{int(p * 100)}": float(sign * (actual - lvl) >= 0) if went_further and not np.isnan(lvl) else np.nan
