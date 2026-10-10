@@ -24,10 +24,11 @@ Run: python levels.py [DATE] [HOUR]   (HOUR = after that hour's candle, "open" f
      pre-open view; omit for the latest candle of DATE). Prints the levels and the brightest
      heatmap levels as prices, and saves the heatmap as hodlod.png
      python levels.py backtest        (walk-forward calibration on all the data)
+     --2y on either: learn only from the last two years before the day (as the original tool)
 """
 
 import sys
-from datetime import date
+from datetime import date, timedelta
 
 import numpy as np
 import pandas as pd
@@ -178,14 +179,16 @@ def forecast(ex: pd.DataFrame, high_so_far: float, low_so_far: float, today_rang
             for side, col, now, sign in [("HOD", "up", high_so_far, 1), ("LOD", "down", low_so_far, -1)]}
 
 
-def day_lines(candles: pd.DataFrame, stats: pd.DataFrame, target: date, today_range: float) -> list[dict]:
+def day_lines(candles: pd.DataFrame, stats: pd.DataFrame, target: date, today_range: float,
+              lookback_days: int | None = None) -> list[dict]:
     """The forecast before the open and after each of target's hourly candles so far, each from
-    earlier days only: how the HOD/LOD line moved through the day."""
+    earlier days only (the last lookback_days if given): how the HOD/LOD line moved through the day."""
     hi, lo, close = through_hour(candles)
     day = candles[candles.index.date == target]
     out = []
     for hour in [None, *range(day.index[-1].hour + 1)]:  # hours without a candle (17:00 halt) carry on
-        history = stats[[d < target for d in stats.index]]
+        first = target - timedelta(days=lookback_days) if lookback_days else date.min
+        history = stats[[first <= d < target for d in stats.index]]
         ex, w = extras(history, hi, lo, hour), np.ones(len(history))
         if hour is not None:
             where = position(hi, lo, close, hour)
@@ -221,8 +224,10 @@ def today_yardstick(stats: pd.DataFrame, target: date) -> float:
 
 
 def walk_forward(stats: pd.DataFrame, hi: pd.DataFrame, lo: pd.DataFrame, close: pd.DataFrame,
-                 warmup: int = 250) -> pd.DataFrame:
-    """Each day forecast only from earlier days; did the HOD/LOD reach each level?"""
+                 warmup: int = 250, lookback_days: int | None = None) -> pd.DataFrame:
+    """Each day forecast only from earlier days (the last lookback_days if given); did the HOD/LOD
+    reach each level?"""
+    days = np.array(stats.index)
     rows = []
     for hour in CHECKPOINTS:
         ex = extras(stats, hi, lo, hour).to_numpy()
@@ -234,6 +239,8 @@ def walk_forward(stats: pd.DataFrame, hi: pd.DataFrame, lo: pd.DataFrame, close:
         near = nearness(hi_now, lo_now, close_now.to_numpy(), stats.r5.to_numpy())
         for i in range(warmup, len(stats)):
             ok = ~np.isnan(ex[:i]).any(axis=1) & ~np.isnan(near[:i]).any(axis=1)
+            if lookback_days:
+                ok &= days[:i] >= days[i] - timedelta(days=lookback_days)
             past = ex[:i][ok]
             w = np.ones(len(past)) if hour is None else similar(where[:i][ok], near[:i][ok], where[i], near[i])
             day, r = stats.iloc[i], stats.r5.iloc[i]
@@ -257,8 +264,10 @@ if __name__ == "__main__":
     stats = daily_stats(candles)
     use_yardstick(stats)
     hi, lo, close = through_hour(candles)
-    if sys.argv[1:2] == ["backtest"]:
-        result = walk_forward(stats.dropna(), hi, lo, close)
+    args = [a for a in sys.argv[1:] if a != "--2y"]
+    lookback = 730 if "--2y" in sys.argv else None  # only the last two years, like the original tool
+    if args[:1] == ["backtest"]:
+        result = walk_forward(stats.dropna(), hi, lo, close, lookback_days=lookback)
         print(f"{result.day.nunique()} days, {result.day.min()} .. {result.day.max()}, scaled by the HAR yardstick")
         print("*_done_pred vs *_done_real: forecast vs real share of days already done at that hour;")
         print("HOD_75 etc.: on days that went further, share reaching the '75%' level (honest: ~0.75);")
@@ -271,17 +280,17 @@ if __name__ == "__main__":
     except OSError as e:  # the calendar only adds a warning; never block the forecast
         print(f"(event calendar unavailable: {e})")
         events = {}
-    target = date.fromisoformat(sys.argv[1]) if len(sys.argv) > 1 else today_market()
+    target = date.fromisoformat(args[0]) if args else today_market()
     day = candles[candles.index.date == target]
-    hour = (day.index[-1].hour if len(day) else None) if len(sys.argv) < 3 else (
-        None if sys.argv[2] == "open" else int(sys.argv[2]))
+    hour = (day.index[-1].hour if len(day) else None) if len(args) < 2 else (
+        None if args[1] == "open" else int(args[1]))
     if len(day) == 0 or day.index[0].hour != 0:
         sys.exit(f"No 00:00 candle for {target} yet: run after midnight New York time.")
     if hour is not None and hour > day.index[-1].hour:
         sys.exit(f"The {hour}:00 candle of {target} is not in yet (latest {day.index[-1].hour}:00).")
     open_price = day.Open.iloc[0]
     today_range = today_yardstick(stats, target)
-    f = next(r for r in day_lines(candles[candles.index.date <= target], stats, target, today_range) if r["hour"] == hour)
+    f = next(r for r in day_lines(candles[candles.index.date <= target], stats, target, today_range, lookback) if r["hour"] == hour)
     hod_now, lod_now = f["high"], f["low"]
     when = "before the open" if hour is None else f"after the {hour}:00 candle: high {hod_now:.2f}, low {lod_now:.2f}"
     kind = f"{events[target]} day, " if target in events else ""

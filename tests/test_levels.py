@@ -96,6 +96,8 @@ def test_day_lines_forecast_each_hour_from_earlier_days_only():
     # Before the open: past HODs were +1 and +2 ranges above the open -> median +1.5 -> 115.
     assert out[0]["HOD"]["line"] == 115.0 and out[0]["n"] == 2
     assert out[2]["high"] == 101 and out[2]["low"] == 99
+    # With a 1-day lookback only 11-10 (HOD +2 ranges) counts.
+    assert levels.day_lines(c, stats, date(2026, 11, 11), 10.0, lookback_days=1)[0]["HOD"]["line"] == 120.0
 
 
 def test_heat_counts_where_the_days_that_went_further_ended():
@@ -152,6 +154,13 @@ def test_walk_forward_and_the_live_view_give_the_same_forecast_for_a_day():
         w = wf.loc["open" if row["hour"] is None else f"{row['hour']}:00"]
         assert np.isclose(row["HOD"]["done"], w.HOD_done_pred) and np.isclose(row["LOD"]["done"], w.LOD_done_pred)
         assert np.isclose(abs(stats.high.iloc[-1] - row["HOD"]["line"]), w.HOD_miss)
+    # the same holds with a lookback window
+    wf = levels.walk_forward(stats, *levels.through_hour(c), warmup=len(stats) - 1, lookback_days=60).set_index("hour")
+    live = levels.day_lines(c, stats, target, stats.r5.iloc[-1], lookback_days=60)
+    assert np.isclose(live[0]["HOD"]["done"], wf.loc["open"].HOD_done_pred)
+    nine = next(r for r in live if r["hour"] == 9)
+    assert np.isclose(abs(stats.high.iloc[-1] - nine["HOD"]["line"]), wf.loc["9:00"].HOD_miss)
+    assert nine["n"] <= 60
 
 
 def test_yardstick_blends_earlier_days_parkinson_volatility_only():
