@@ -51,6 +51,7 @@ Change in HOD+LOD pinball loss vs the model above; negative is better, t in brac
 |---|---|---|---|---|
 | VIX9D instead of 5-day range (implied vol, Albers 2025) | -2% (-5) | -1% | ~0 | was; dropped with Yahoo |
 | HAR on hourly Parkinson vol instead of 5-day range, 2022-2026 out of sample | -2.2% (-4.9) | -0.2% | -0.3% | yes (2:00/5:00 -1.2%, 15:00 -0.6%) |
+| Update the yardstick each hour with today's Parkinson vol so far (rest-of-day range error -15% at 9:00, -10% at 12:00) | - | -0.2% (-0.8) | +0.6% (+1.3) | no: the size of the rest of the day is not how far past the high/low it goes |
 | Parkinson vol alone, 5-day mean or EWM (half-life 3) | -0.9/-1.1% (-3.7/-3.0) | ~0 | ~0 | no, HAR is better |
 | HAR on daily ranges / + the 18:00-23:00 evening range | log-range error -6% / -5% (HAR-Parkinson -15%) | | | no |
 | Position in fifths of the range so far, not halves | 0 | -3% (-5) | -4% (-6) | yes |
