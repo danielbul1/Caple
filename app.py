@@ -9,6 +9,7 @@ inside that window, so in practice only today (and early in the morning,
 yesterday) can be picked.
 """
 
+import os
 from datetime import date, datetime, time, timedelta, timezone
 from io import StringIO
 from math import isnan
@@ -60,15 +61,23 @@ def fetch_candles(picked: date) -> pd.DataFrame:
 
 
 def live_candles() -> tuple[pd.DataFrame, pd.Series]:
-    """The last ~2 years of 1h candles up to now (the current hour still forming) and VIX9D's
-    daily closes, refreshed at most every LIVE_TTL seconds."""
-    from levels import implied_closes  # levels imports this module
+    """1h candles up to now (the current hour still forming) and VIX9D's daily closes, refreshed
+    at most every LIVE_TTL seconds. With LSE_API_KEY: LSE's history since 2016 (any day can be
+    viewed, and the forecast uses the history it was tested on), topped up with Yahoo's bars
+    newer than LSE's last one; without it, Yahoo's last ~2 years."""
+    import levels  # levels imports this module
+    import lse_source
 
     global _live
     if _live is None or monotonic() - _live[0] > LIVE_TTL:
         today = today_market()
-        candles = download(today - timedelta(days=LOOKBACK_DAYS - 1), today + timedelta(days=1))
-        _live = (monotonic(), candles, implied_closes())
+        if os.environ.get("LSE_API_KEY"):
+            candles = lse_source.fetch()
+            recent = download(today - timedelta(days=5), today + timedelta(days=1))
+            candles = pd.concat([candles, recent[recent.index > candles.index[-1]]])
+        else:
+            candles = download(today - timedelta(days=LOOKBACK_DAYS - 1), today + timedelta(days=1))
+        _live = (monotonic(), candles, levels.implied_closes())
     return _live[1], _live[2]
 
 

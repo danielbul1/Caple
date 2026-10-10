@@ -150,6 +150,9 @@ brighter and thicker = more days. The dashed white lines are the high/low so far
 chance it is already the final one. It is recomputed before the open and after every
 hourly candle (the forming candle counts, data refreshes every 2 minutes, the page every
 minute); the "מצב" picker replays any earlier hour of the day.
+With `LSE_API_KEY` set the page runs on LSE's history since 2016, so any date since then can
+be picked, and the forecast uses the same history it was tested on; Yahoo only fills in bars
+newer than LSE's last one (the hour still forming). Without the key it has Yahoo's last 2 years.
 No single level is "touch once and it's the HOD": walk-forward (`python levels.py backtest`,
 `*_past_line`) on days price reached the median level, it went on another ~25-38 points on
 average before 9:00 and ~17-24 after 12:00.
