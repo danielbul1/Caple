@@ -36,26 +36,24 @@
   .lines-head { display:flex; flex-wrap:wrap; align-items:center; gap: 8px 16px; margin-bottom: 8px; font-size:14px; }
   .now { display:flex; flex-wrap:wrap; gap: 8px 32px; font-size:14px; margin: 8px 0; }
   .now b { font-size: 20px; font-variant-numeric: tabular-nums; }
-  .key { display:inline-block; width:14px; height:2px; vertical-align:middle; margin-inline-end:6px; }
   .note { color:#6e6e73; font-size: 13px; }
   .chart { position: relative; direction: ltr; }
   .chart svg { width: 100%; height: auto; display:block; }
-  .chart text { font-size: 11px; fill: #6e6e73; font-variant-numeric: tabular-nums; }
-  .tip { position:absolute; pointer-events:none; background:#fff; border:1px solid var(--line); border-radius:8px;
-         padding:6px 10px; font-size:12px; box-shadow:0 2px 8px rgba(0,0,0,.08); white-space:nowrap; display:none; }
+  .chart text { font-size: 11px; fill: #aeaeb2; font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
 <main>
   <section class="lines">
-    <h1>ES=F · קו HOD/LOD חי</h1>
-    <p class="sub">הקו הוא הניחוש הטוב ביותר לשיא ולשפל של היום (החציון בימים דומים), ומחושב מחדש בפתיחה ואחרי כל נר שעה. כשרוב הימים הדומים כבר סיימו, הקו יושב על השיא/השפל עד עכשיו: "זה כנראה ה-HOD".</p>
+    <h1>ES=F · מפת רמות HOD/LOD</h1>
+    <p class="sub">ריחוף מעל קו מראה את המחיר ומספר הימים. כל קו אופקי הוא מרחק בנקודות מהפתיחה (00:00) שבו הסתיים ה-HOD (מעל 0) או ה-LOD (מתחת ל-0) בימים דומים שהמשיכו מעבר לשיא/שפל של אותה שעה, מותאם לתנודתיות של היום. בהיר ועבה יותר = יותר ימים הסתיימו שם. הקו המקווקו הלבן הוא השיא/שפל עד עכשיו, עם הסיכוי שהוא כבר הסופי. מחושב מחדש בפתיחה ואחרי כל נר שעה.</p>
     <div class="lines-head">
       <label>תאריך: <input type="date" id="lines-date"></label>
+      <label>מצב: <select id="lines-hour"></select></label>
       <span class="note" id="lines-status"></span>
     </div>
     <div class="now" id="lines-now"></div>
-    <div class="chart" id="lines-chart"><div class="tip" id="lines-tip"></div></div>
+    <div class="chart" id="lines-chart"></div>
   </section>
 
   <h1>ES=F · נרות שעה</h1>
@@ -158,9 +156,11 @@ async function init() {
 }
 init();
 
-const HOD_COLOR = "#2a78d6", LOD_COLOR = "#eb6834", CANDLE = "#8e8e93";
-let linesTimer = null, followLatest = true;  // until a date is picked, follow the latest day
+const VIRIDIS = ["#440154", "#3b528b", "#21918c", "#5ec962", "#fde725"];
+let linesTimer = null, followLatest = true, pickedHour;  // until a date is picked, follow the latest day
 const pct = p => p == null ? "–" : `${Math.round(p * 100)}%`;
+const hourName = h => h == null ? "לפני הפתיחה" : `אחרי נר ${h}:00`;
+const viridis = t => VIRIDIS[Math.min(VIRIDIS.length - 1, Math.round(t * (VIRIDIS.length - 1)))];
 
 async function loadLines() {
   const status = document.getElementById("lines-status"), input = document.getElementById("lines-date");
@@ -171,60 +171,54 @@ async function loadLines() {
     if (!res.ok) throw new Error(data.error || res.statusText);
     input.value = data.date;
     status.textContent = data.live ? `חי · מתעדכן כל דקה · עודכן ${new Date().toLocaleTimeString("he-IL")}` : "יום שהסתיים";
-    drawLines(data);
+    const sel = document.getElementById("lines-hour");
+    sel.innerHTML = data.lines.map((l, i) => `<option value="${i}">${hourName(l.hour)}</option>`).join("");
+    const keep = data.lines.findIndex(l => l.hour === pickedHour);
+    sel.value = pickedHour === undefined || keep < 0 ? data.lines.length - 1 : keep;  // default: the latest
+    sel.onchange = () => { pickedHour = data.lines[sel.value].hour; drawLines(data, +sel.value); };
+    drawLines(data, +sel.value);
   } catch (e) {
     status.innerHTML = `<span class="err">${e.message}</span>`;
   }
   if (followLatest) linesTimer = setTimeout(loadLines, 60000);  // also retries after an error
 }
 
-function drawLines(data) {
-  const last = data.lines[data.lines.length - 1];
-  const side = (name, color, line, done, sofar) => `<span><span class="key" style="background:${color}"></span>${name}: <b>${fmt(line)}</b>
-    · כבר נקבע ב-${pct(done)} מהימים הדומים${line === sofar ? " · <b style='font-size:14px'>המחיר על הקו: כנראה זה ה-" + name + "</b>" : ""}</span>`;
-  document.getElementById("lines-now").innerHTML =
-    side("HOD", HOD_COLOR, last.hod_line, last.hod_done, last.high) + side("LOD", LOD_COLOR, last.lod_line, last.lod_done, last.low);
+function drawLines(data, i) {
+  const row = data.lines[i], open = data.candles[0].open;
+  document.getElementById("lines-now").innerHTML = [["HOD", "השיא", row.high, row.hod_done], ["LOD", "השפל", row.low, row.lod_done]]
+    .map(([name, word, sofar, done]) => `<span>${name}: ${word} עד עכשיו <b>${fmt(sofar)}</b> · כבר נקבע ב-${pct(done)} מ-${row.n} ימים דומים</span>`).join("");
 
-  const W = 860, H = 340, L = 44, R = 104, T = 12, B = 24;
-  const prices = data.candles.flatMap(c => [c.high, c.low]).concat(data.lines.flatMap(l => [l.hod_line, l.lod_line]).filter(v => v != null));
-  const lo = Math.min(...prices), hi = Math.max(...prices), pad = (hi - lo) * 0.06;
-  const x = h => L + (W - L - R) * h / 24, y = p => T + (H - T - B) * (hi + pad - p) / (hi - lo + 2 * pad);
-  // A forecast made at the close of hour h holds from h+1 until the next one; the pre-open one from 0.
-  const from = l => l.hour == null ? 0 : l.hour + 1;
-  const step = key => data.lines.map((l, i) => {
-    const end = i + 1 < data.lines.length ? from(data.lines[i + 1]) : 24;
-    return l[key] == null ? "" : `M${x(from(l))},${y(l[key])}H${x(end)}` + (i + 1 < data.lines.length && data.lines[i + 1][key] != null ? `V${y(data.lines[i + 1][key])}` : "");
-  }).join("");
-  const grid = [0.25, 0.5, 0.75].map(f => lo - pad + (hi - lo + 2 * pad) * f).map(p =>
-    `<line x1="${L}" x2="${W - R}" y1="${y(p)}" y2="${y(p)}" stroke="#e5e5ea"/><text x="0" y="${y(p) + 4}">${p.toFixed(0)}</text>`).join("");
-  const hours = [0, 3, 6, 9, 12, 15, 18, 21].map(h => `<text x="${x(h)}" y="${H - 6}">${h}:00</text>`).join("");
-  const bw = (W - L - R) / 24 * 0.6;
-  const candles = data.candles.map(c => {
-    const cx = x(c.hour + 0.5), top = y(Math.max(c.open, c.close)), body = Math.max(1, y(Math.min(c.open, c.close)) - top);
-    return `<line x1="${cx}" x2="${cx}" y1="${y(c.high)}" y2="${y(c.low)}" stroke="${CANDLE}"/>
-      <rect x="${cx - bw / 2}" y="${top}" width="${bw}" height="${body}" rx="1" fill="${c.close >= c.open ? "#fff" : CANDLE}" stroke="${CANDLE}"/>`;
-  }).join("");
-  const label = (v, color, name) => v == null ? "" : `<text x="${W - R + 6}" y="${y(v) + 4}" style="fill:${color};font-weight:600">${name} ${v.toFixed(2)}</text>`;
-  const hits = Array.from({ length: 24 }, (_, h) => `<rect data-h="${h}" x="${x(h)}" y="${T}" width="${x(1) - x(0)}" height="${H - T - B}" fill="transparent"/>`).join("");
-  const chart = document.getElementById("lines-chart");
-  chart.innerHTML = `<div class="tip" id="lines-tip"></div><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="HOD and LOD lines over the day">
-    ${grid}${hours}${candles}
-    <path d="${step("hod_line")}" fill="none" stroke="${HOD_COLOR}" stroke-width="2"/>
-    <path d="${step("lod_line")}" fill="none" stroke="${LOD_COLOR}" stroke-width="2"/>
-    ${label(last.hod_line, HOD_COLOR, "HOD")}${label(last.lod_line, LOD_COLOR, "LOD")}${hits}</svg>`;
-  const tip = document.getElementById("lines-tip");
-  chart.querySelectorAll("rect[data-h]").forEach(r => {
-    r.onmouseenter = () => {
-      const h = +r.dataset.h, c = data.candles.find(c => c.hour === h);
-      const l = [...data.lines].reverse().find(l => from(l) <= h);
-      tip.innerHTML = `<b>${h}:00</b>${c ? ` · O ${fmt(c.open)} H ${fmt(c.high)} L ${fmt(c.low)} C ${fmt(c.close)}` : ""}` +
-        (l ? `<br>HOD line ${fmt(l.hod_line)} (in: ${pct(l.hod_done)}) · LOD line ${fmt(l.lod_line)} (in: ${pct(l.lod_done)})` : "");
-      tip.style.display = "block";
-      tip.style.left = `${Math.min(chart.clientWidth - tip.offsetWidth, r.getBoundingClientRect().left - chart.getBoundingClientRect().left)}px`;
-      tip.style.top = "0px";
-    };
-    r.onmouseleave = () => { tip.style.display = "none"; };
-  });
+  // QuantiStat "Price Based" look: points from the 00:00 open, HOD above 0, LOD below.
+  // Like the original, levels hit on a single day are left out as noise.
+  const heat = row.hod_heat.concat(row.lod_heat).filter(([, c]) => c >= 2).map(([p, c]) => [p - open, c, p]);
+  const counts = heat.map(([, c]) => c), least = Math.min(...counts), most = Math.max(...counts);
+  const W = 860, H = 460, L = 56, R = 110, T = 36, B = 40;
+  const pts = heat.map(([d]) => d).concat(row.high - open, row.low - open), lo = Math.min(...pts), hi = Math.max(...pts), pad = (hi - lo) * 0.05;
+  const y = d => T + (H - T - B) * (hi + pad - d) / (hi - lo + 2 * pad);
+  const step = [5, 10, 20, 25, 50, 100].find(s => (hi - lo) / s <= 8);
+  const ticks = [];
+  for (let d = Math.ceil((lo - pad) / step) * step; d <= hi + pad; d += step) ticks.push(d);
+  const grid = ticks.map(d => `<line x1="${L}" x2="${W - R}" y1="${y(d)}" y2="${y(d)}" stroke="#2c2c2e"/>
+    <text x="${L - 8}" y="${y(d) + 4}" text-anchor="end">${d}</text>`).join("");
+  const xs = [0, 0.2, 0.4, 0.6, 0.8, 1].map(f => `<line x1="${L + (W - L - R) * f}" x2="${L + (W - L - R) * f}" y1="${T}" y2="${H - B}" stroke="#2c2c2e"/>
+    <text x="${L + (W - L - R) * f}" y="${H - B + 18}" text-anchor="middle">${f.toFixed(1)}</text>`).join("");
+  const t = c => most === least ? 1 : (c - least) / (most - least);
+  // Dim bins first so the bright ones are drawn on top; thicker = more days.
+  const levels = heat.slice().sort((a, b) => a[1] - b[1]).map(([d, c, p]) =>
+    `<line x1="${L}" x2="${W - R}" y1="${y(d)}" y2="${y(d)}" stroke="${viridis(t(c))}" stroke-width="${1.5 + 1.5 * t(c)}">
+      <title>${d > 0 ? "+" : ""}${d.toFixed(2)} points (${fmt(p)}): ${c} days</title></line>`).join("");
+  const barH = (H - T - B) / VIRIDIS.length;
+  const bar = VIRIDIS.map((col, k) => `<rect x="${W - R + 24}" y="${T + barH * (VIRIDIS.length - 1 - k)}" width="14" height="${barH}" fill="${col}"/>`).join("") +
+    `<text x="${W - R + 44}" y="${T + 10}">${most}</text><text x="${W - R + 44}" y="${H - B}">${least}</text>
+     <text transform="translate(${W - R + 80},${(T + H - B) / 2}) rotate(90)" text-anchor="middle">heatmap (days)</text>`;
+  document.getElementById("lines-chart").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="HOD/LOD price based heatmap">
+    <rect width="${W}" height="${H}" fill="#141414" rx="8"/>
+    <text x="${(L + W - R) / 2}" y="22" text-anchor="middle" style="fill:#f2f2f7;font-size:14px">HOD/LOD Price Based · ${row.hour == null ? "before the open" : `after ${row.hour}:00`}</text>
+    ${grid}${xs}<rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="none" stroke="#8e8e93"/>${levels}
+    ${[[row.high, row.hod_done, "HOD"], [row.low, row.lod_done, "LOD"]].map(([p, done, name]) =>
+      `<line x1="${L}" x2="${W - R}" y1="${y(p - open)}" y2="${y(p - open)}" stroke="#f2f2f7" stroke-dasharray="6 4"/>
+       <text x="${L + 6}" y="${y(p - open) + (name === "HOD" ? -6 : 14)}" style="fill:#f2f2f7">${name} so far ${fmt(p)} · already in: ${pct(done)}</text>`).join("")}
+    <text transform="translate(14,${(T + H - B) / 2}) rotate(-90)" text-anchor="middle">points</text>${bar}</svg>`;
 }
 
 document.getElementById("lines-date").onchange = () => { followLatest = false; loadLines(); };

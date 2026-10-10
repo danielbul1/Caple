@@ -194,7 +194,8 @@ def lines():
             "lines": [
                 {"hour": None if r["hour"] is None else int(r["hour"]), "n": r["n"],
                  "high": float(r["high"]), "low": float(r["low"]),
-                 **{f"{side.lower()}_{k}": num(r[side][k]) for side in ("HOD", "LOD") for k in ("line", "done")}}
+                 **{f"{side.lower()}_done": num(r[side]["done"]) for side in ("HOD", "LOD")},
+                 **{f"{side.lower()}_heat": r[side]["heat"] for side in ("HOD", "LOD")}}
                 for r in rows
             ],
         }

@@ -77,12 +77,22 @@ def odds(extra: np.ndarray, now: float, sign: int, today_range: float) -> tuple[
     return 1 - len(more) / len(extra), [now + sign * np.quantile(more, 1 - p) * today_range for p in REACH]
 
 
+def heat(extra: np.ndarray, now: float, sign: int, today_range: float, width: float = 2.0) -> list[tuple[float, int]]:
+    """Where the HOD (LOD) of each similar day that went further ended, in today's prices,
+    counted per `width`-point bin: the QuantiStat-style price heatmap."""
+    if np.isnan(today_range):
+        return []
+    prices = np.round((now + sign * extra[extra > 1e-9] * today_range) / width) * width
+    return [(float(p), int(c)) for p, c in zip(*np.unique(prices, return_counts=True))]
+
+
 def forecast(ex: pd.DataFrame, high_so_far: float, low_so_far: float, today_range: float) -> dict:
     """Per side: done, levels, and line = the median final HOD/LOD over all similar days (the
     best single guess; it sits on the high/low so far once most similar days were done)."""
     ex = ex.dropna()
     return {side: dict(zip(["done", "levels"], odds(ex[col].to_numpy(), now, sign, today_range)),
-                       line=now + sign * np.median(ex[col]) * today_range)
+                       line=now + sign * np.median(ex[col]) * today_range,
+                       heat=heat(ex[col].to_numpy(), now, sign, today_range))
             for side, col, now, sign in [("HOD", "up", high_so_far, 1), ("LOD", "down", low_so_far, -1)]}
 
 

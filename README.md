@@ -44,17 +44,19 @@ On 10 years walk-forward both are calibrated (e.g. at
 the miss of the median shrinks from ~18-20 points at the open to ~10-12 at 9:00
 and ~6 at 12:00.
 
-## Live HOD/LOD line
+## Live HOD/LOD price heatmap
 
-The top of the page (`GET /api/lines?date=YYYY-MM-DD`, default the latest day) draws one
-line for the HOD and one for the LOD: the median final high/low of similar past days,
-recomputed before the open and after every hourly candle (the forming candle counts, data
-refreshes every 2 minutes, the page every minute). Once most similar days had their high
-(low) in, the line sits on the high (low) so far: "this is probably the HOD".
-A line away from price is a best guess, not a turning point: walk-forward
-(`python levels.py backtest`, `*_past_line`) on days price reached it, it went on another
-~25-38 points on average before 9:00 and ~17-24 after 12:00. The signal is the line
-dropping onto the price, with the chance the HOD/LOD is already in next to it.
+The top of the page (`GET /api/lines?date=YYYY-MM-DD`, default the latest day) draws the
+QuantiStat "Price Based" heatmap for today: points from the 00:00 open, HOD above 0, LOD
+below, one horizontal line per 2-point bin where similar past days that went past the
+high/low so far ended (scaled to today's yardstick; bins of a single day are hidden),
+brighter and thicker = more days. The dashed white lines are the high/low so far with the
+chance it is already the final one. It is recomputed before the open and after every
+hourly candle (the forming candle counts, data refreshes every 2 minutes, the page every
+minute); the "מצב" picker replays any earlier hour of the day.
+No single level is "touch once and it's the HOD": walk-forward (`python levels.py backtest`,
+`*_past_line`) on days price reached the median level, it went on another ~25-38 points on
+average before 9:00 and ~17-24 after 12:00.
 
 ## QuantiStat charts
 

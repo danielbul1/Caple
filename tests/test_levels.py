@@ -100,3 +100,11 @@ def test_day_lines_forecast_each_hour_from_earlier_days_only():
     # Before the open: past HODs were +1 and +2 ranges above the open -> median +1.5 -> 115.
     assert out[0]["HOD"]["line"] == 115.0 and out[0]["n"] == 2
     assert out[2]["high"] == 101 and out[2]["low"] == 99
+
+
+def test_heat_counts_where_the_days_that_went_further_ended():
+    # Past HODs 1, 1.05 and 3 ranges above the high so far (done days left out), 10-point range, 2-point bins.
+    extra = np.array([0.0, 1.0, 1.05, 3.0])
+    assert levels.heat(extra, 100.0, 1, 10.0) == [(110.0, 2), (130.0, 1)]
+    assert levels.heat(extra, 100.0, -1, 10.0) == [(70.0, 1), (90.0, 2)]  # LOD: below the low so far
+    assert levels.heat(extra, 100.0, 1, np.nan) == []
