@@ -141,7 +141,7 @@ def odds(extra: np.ndarray, now: float, sign: int, today_range: float,
 
 
 def heat(extra: np.ndarray, now: float, sign: int, today_range: float,
-         origin: float = 0.0) -> list[tuple[float, int]]:
+         origin: float) -> list[tuple[float, int]]:
     """Where the HOD (LOD) of each similar day that went further ended, in today's prices,
     counted per 1-point cell whole points from `origin` (the open): the price heatmap."""
     if np.isnan(today_range):
@@ -150,9 +150,9 @@ def heat(extra: np.ndarray, now: float, sign: int, today_range: float,
     return [(float(p), int(c)) for p, c in zip(*np.unique(prices, return_counts=True))]
 
 
-def brightest(bins: list[tuple[float, int]], now: float, top: int = 3) -> list[tuple[float, int]]:
-    """The `top` heatmap bins where the most similar days ended (nearest to price first on a tie)."""
-    return sorted(sorted(bins, key=lambda b: (-b[1], abs(b[0] - now)))[:top], key=lambda b: b[0])
+def brightest(cells: list[tuple[float, int]], now: float, top: int = 3) -> list[tuple[float, int]]:
+    """The `top` heatmap cells where the most similar days ended (nearest to price first on a tie)."""
+    return sorted(sorted(cells, key=lambda b: (-b[1], abs(b[0] - now)))[:top], key=lambda b: b[0])
 
 
 def plot_heat(f: dict, open_price: float, title: str):
@@ -165,10 +165,10 @@ def plot_heat(f: dict, open_price: float, title: str):
 
     plt.style.use("dark_background")
     fig, ax = plt.subplots(figsize=(10, 7))
-    bins = [b for side in ("HOD", "LOD") for b in f[side]["heat"]
+    cells = [b for side in ("HOD", "LOD") for b in f[side]["heat"]
             if b[1] >= max(MIN_DAYS, 0.5 * max(c for _, c in f[side]["heat"]))]
-    norm = Normalize(MIN_DAYS, max([c for _, c in bins], default=MIN_DAYS + 1))
-    for price, count in bins:
+    norm = Normalize(MIN_DAYS, max([c for _, c in cells], default=MIN_DAYS + 1))
+    for price, count in cells:
         ax.axhline(price - open_price, color=plt.cm.viridis(norm(count)), linewidth=2 + 4 * norm(count))
     for side in ("HOD", "LOD"):
         for lvl in f[side]["levels"]:
@@ -185,8 +185,8 @@ def plot_heat(f: dict, open_price: float, title: str):
     return fig
 
 
-def forecast(ex: pd.DataFrame, high_so_far: float, low_so_far: float, today_range: float,
-             w: np.ndarray | None = None, rw: tuple[float, float] | None = None, origin: float = 0.0) -> dict:
+def forecast(ex: pd.DataFrame, high_so_far: float, low_so_far: float, today_range: float, origin: float,
+             w: np.ndarray | None = None, rw: tuple[float, float] | None = None) -> dict:
     """Per side: done, levels, and line = the median final HOD/LOD over all similar days (the
     best single guess; it sits on the high/low so far once most similar days were done). rw =
     the random walk's "already in" for the HOD and the LOD, averaged into done."""
@@ -196,7 +196,7 @@ def forecast(ex: pd.DataFrame, high_so_far: float, low_so_far: float, today_rang
     return {side: dict(zip(["done", "levels"], odds(ex[col].to_numpy(), now, sign, today_range, w,
                                                     None if rw is None else rw[k])),
                        line=now + sign * wquantile(ex[col].to_numpy(), w, 0.5) * today_range,
-                       heat=heat(ex[col].to_numpy(), now, sign, today_range, origin=origin))
+                       heat=heat(ex[col].to_numpy(), now, sign, today_range, origin))
             for side, col, now, sign, k in [("HOD", "up", high_so_far, 1, 0), ("LOD", "down", low_so_far, -1, 1)]}
 
 
@@ -220,8 +220,8 @@ def day_lines(candles: pd.DataFrame, stats: pd.DataFrame, target: date, today_ra
         high = day.Open.iloc[0] if hour is None else hi.loc[target, hour]
         low = day.Open.iloc[0] if hour is None else lo.loc[target, hour]
         out.append({"hour": hour, "high": high, "low": low, "n": int((w > 0).sum()),
-                    **forecast(ex, high, low, today_range, w,
-                               None if hour is None else [rw_done(x, hour) for x in today_near], day.Open.iloc[0])})
+                    **forecast(ex, high, low, today_range, day.Open.iloc[0], w,
+                               None if hour is None else [rw_done(x, hour) for x in today_near])})
     return out
 
 

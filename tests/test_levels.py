@@ -42,7 +42,7 @@ def test_extras_measure_what_was_still_to_come_in_5_day_ranges():
 
 def test_forecast_turns_history_into_todays_odds_and_prices():
     ex = pd.DataFrame({"up": [0.0, 0.0, 1.0, 2.0], "down": [0.0, 1.0, 1.0, 1.0]})
-    f = levels.forecast(ex, high_so_far=200.0, low_so_far=190.0, today_range=10.0)
+    f = levels.forecast(ex, high_so_far=200.0, low_so_far=190.0, today_range=10.0, origin=0.0)
     assert f["HOD"]["done"] == 0.5 and f["LOD"]["done"] == 0.25
     # If it goes further: from the days that did (up 1 and 2 ranges), reached on 75% / 50% / 25% of them.
     assert f["HOD"]["levels"] == [212.5, 215.0, 217.5]
@@ -76,10 +76,10 @@ def test_odds_when_no_similar_day_went_further():
 def test_forecast_line_is_the_median_final_hod_and_lod():
     # Half the days the HOD was already in: the best single guess for the HOD is between "in" and +1 range.
     ex = pd.DataFrame({"up": [0.0, 0.0, 1.0, 2.0], "down": [0.0, 1.0, 1.0, 1.0]})
-    f = levels.forecast(ex, high_so_far=200.0, low_so_far=190.0, today_range=10.0)
+    f = levels.forecast(ex, high_so_far=200.0, low_so_far=190.0, today_range=10.0, origin=0.0)
     assert f["HOD"]["line"] == 205.0 and f["LOD"]["line"] == 180.0
     # Most days already done: the line sits on the high so far ("this is probably the HOD").
-    f = levels.forecast(ex.assign(up=[0.0, 0.0, 0.0, 2.0]), 200.0, 190.0, 10.0)
+    f = levels.forecast(ex.assign(up=[0.0, 0.0, 0.0, 2.0]), 200.0, 190.0, 10.0, 0.0)
     assert f["HOD"]["line"] == 200.0
 
 
@@ -103,11 +103,11 @@ def test_day_lines_forecast_each_hour_from_earlier_days_only():
 def test_heat_counts_where_the_days_that_went_further_ended():
     # Past HODs 1, 1.05 and 3 ranges above the high so far (done days left out), 10-point range, 1-point cells.
     extra = np.array([0.0, 1.0, 1.05, 3.0])
-    assert levels.heat(extra, 100.0, 1, 10.0) == [(110.0, 2), (130.0, 1)]
-    assert levels.heat(extra, 100.0, -1, 10.0) == [(70.0, 1), (90.0, 2)]  # LOD: below the low so far
-    assert levels.heat(np.array([1.0, 1.15]), 100.0, 1, 10.0) == [(110.0, 1), (112.0, 1)]  # 1-point cells
+    assert levels.heat(extra, 100.0, 1, 10.0, 0.0) == [(110.0, 2), (130.0, 1)]
+    assert levels.heat(extra, 100.0, -1, 10.0, 0.0) == [(70.0, 1), (90.0, 2)]  # LOD: below the low so far
+    assert levels.heat(np.array([1.0, 1.15]), 100.0, 1, 10.0, 0.0) == [(110.0, 1), (112.0, 1)]  # 1-point cells
     assert levels.heat(extra, 100.0, 1, 10.0, origin=0.25) == [(110.25, 2), (130.25, 1)]  # whole points from the open
-    assert levels.heat(extra, 100.0, 1, np.nan) == []
+    assert levels.heat(extra, 100.0, 1, np.nan, 0.0) == []
 
 
 def test_weighted_quantile_with_equal_weights_is_numpys_and_ignores_zero_weights():
@@ -187,19 +187,19 @@ def test_parkinson_volatility_is_in_points():
     assert np.isclose(park, 100 * np.sqrt((np.log(101 / 99) ** 2 + np.log(102 / 100) ** 2) / (4 * np.log(2))))
 
 
-def test_brightest_bins_are_the_most_common_ends_nearest_first_on_ties():
-    bins = [(110.0, 2), (120.0, 5), (130.0, 5), (140.0, 1), (150.0, 3)]
-    assert levels.brightest(bins, now=100.0, top=3) == [(120.0, 5), (130.0, 5), (150.0, 3)]
+def test_brightest_cells_are_the_most_common_ends_nearest_first_on_ties():
+    cells = [(110.0, 2), (120.0, 5), (130.0, 5), (140.0, 1), (150.0, 3)]
+    assert levels.brightest(cells, now=100.0, top=3) == [(120.0, 5), (130.0, 5), (150.0, 3)]
     assert levels.brightest([], now=100.0) == []
 
 
-def test_plot_draws_one_line_per_bin_seen_twice_in_points_from_the_open():
+def test_plot_draws_one_line_per_cell_seen_twice_in_points_from_the_open():
     f = {"hour": 9, "high": 105.0, "low": 95.0,
          "HOD": {"done": 0.3, "levels": [107.0, 110.0, 115.0], "line": 108.0, "heat": [(110.0, 4), (120.0, 1), (130.0, 2)]},
          "LOD": {"done": 0.6, "levels": [93.0, 90.0, 85.0], "line": 95.0, "heat": [(90.0, 2)]}}
     fig = levels.plot_heat(f, open_price=100.0, title="t")
     ys = sorted(round(l.get_ydata()[0], 2) for l in fig.axes[0].lines if l.get_linestyle() == "-" and l.get_linewidth() > 1.5)
-    assert ys == [-10.0, 10.0, 30.0]  # the 120 bin (one day, under half the brightest) is hidden
+    assert ys == [-10.0, 10.0, 30.0]  # the 120 cell (one day, under half the brightest) is hidden
 
 
 def test_random_walk_done_follows_the_reflection_principle():
@@ -215,5 +215,5 @@ def test_odds_averages_the_analogs_share_with_the_random_walk_and_keeps_the_leve
     done_e, lv_e = levels.odds(past, 100.0, 1, 10.0)
     done, lv = levels.odds(past, 100.0, 1, 10.0, rw=0.8)
     assert np.isclose(done, (done_e + 0.8) / 2) and lv == lv_e
-    f = levels.forecast(pd.DataFrame({"up": past, "down": past}), 100.0, 90.0, 10.0, rw=[0.8, 0.2])
+    f = levels.forecast(pd.DataFrame({"up": past, "down": past}), 100.0, 90.0, 10.0, 0.0, rw=[0.8, 0.2])
     assert np.isclose(f["HOD"]["done"], (done_e + 0.8) / 2) and np.isclose(f["LOD"]["done"], (done_e + 0.2) / 2)

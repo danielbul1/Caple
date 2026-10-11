@@ -37,6 +37,15 @@ def test_cells_are_one_point_from_the_open_and_hide_single_days(monkeypatch):
     assert all(float(c["points"]).is_integer() for c in cells)
     assert all((c["side"] == "HOD") == (c["points"] > 0) for c in cells)
     assert sum(c["days"] for c in cells if c["side"] == "HOD") <= data["n"]
+    assert data["min_days"] == 2
+
+
+def test_the_end_date_stays_the_one_picked(monkeypatch):
+    # 03-20 is like a Sunday: only evening bars, no 00:00 open, so the day after 03-19 is 03-21.
+    full = walk(90)
+    sunday = (full.index.date == date(2025, 3, 20)) & (full.index.hour < 18)
+    data = serve(monkeypatch, full[~sunday]).get("/api/price-based?end=2025-03-19&at=open").get_json()
+    assert data["date"] == TARGET.isoformat() and data["end"] == "2025-03-19"
 
 
 @pytest.mark.parametrize("at, last, live", [("open", 0, False), ("5", 5, False), ("", 5, True)])
@@ -69,3 +78,4 @@ def test_bad_requests(monkeypatch):
     assert latest["date"] == "2025-04-01" and latest["end"] == "2025-03-31"  # DST spills one candle into 04-01
     assert client.get(f"/api/price-based?end={END}&at=24").status_code == 400
     assert client.get("/api/price-based?end=2026-01-01").status_code == 404  # no day after it yet
+    assert client.get("/api/price-based?end=2000-01-01").status_code == 404  # no history before it

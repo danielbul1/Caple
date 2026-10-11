@@ -141,25 +141,31 @@ def price_based():
     except Exception as exc:  # network errors, LSE refusals
         return jsonify({"error": str(exc)}), 502
     days = candles.index.date
+    if end is not None and end < days[0]:
+        return jsonify({"error": f"The history starts on {days[0]}. Pick a later End Date."}), 404
     opens = days[candles.index.hour == 0]
-    later = opens if end is None else opens[opens > end]
-    if len(later) == 0:
+    after_end = opens if end is None else opens[opens > end]
+    if len(after_end) == 0:
         return jsonify({"error": f"No trading day after {end} yet. Pick an earlier End Date."}), 404
-    target = later.max() if end is None else later.min()
+    target = after_end.max() if end is None else after_end.min()
     hours = sorted(set(candles.index.hour[days == target]))
-    hour = None if at == "open" else hours[-1] if at is None else int(at)
+    if at == "open":
+        hour = None
+    else:
+        hour = hours[-1] if at is None else int(at)
     if hour is not None and hour not in hours:
         return jsonify({"error": f"{target} has no {hour}:00 candle. Pick an hour that has one, or before the open."}), 404
     known = candles[(days < target) | ((days == target) & (candles.index.hour <= (hour or 0)))]
     stats = daily_stats(known)
     use_yardstick(stats)
     rows = day_lines(known, stats, target, today_yardstick(stats, target))
-    row, open_ = rows[0] if hour is None else rows[-1], float(known.Open[known.index.date == target].iloc[0])
+    row = rows[0] if hour is None else rows[-1]
+    open_ = float(known.Open[known.index.date == target].iloc[0])
     return jsonify(
         {
             "symbol": SYMBOL,
             "date": target.isoformat(),
-            "end": max(d for d in days if d < target).isoformat(),
+            "end": (end or max(d for d in days if d < target)).isoformat(),
             "live": target == today_market(),
             "hours": [int(h) for h in hours],
             "hour": hour,
@@ -167,6 +173,7 @@ def price_based():
             "high": float(row["high"]),
             "low": float(row["low"]),
             "n": row["n"],
+            "min_days": MIN_DAYS,
             "cells": [{"side": side, "points": round(p - open_), "days": c}
                       for side in ("HOD", "LOD") for p, c in row[side]["heat"] if c >= MIN_DAYS],
         }

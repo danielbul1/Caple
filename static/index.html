@@ -77,7 +77,7 @@ const MODULES = {
 const VIRIDIS = ["#440154", "#3b528b", "#21918c", "#5ec962", "#fde725"];
 const viridis = t => VIRIDIS[Math.min(VIRIDIS.length - 1, Math.round(t * (VIRIDIS.length - 1)))];
 const fmt = n => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
-let timer = null, latest = true;  // latest: no End Date picked, so follow the newest day
+let timer = null, latest = true, asked = 0;  // latest: no End Date picked, so open on the newest day
 
 function show(mod) {
   clearTimeout(timer);
@@ -90,34 +90,40 @@ function show(mod) {
     <div class="form">
       <label>Symbol<input value="ES" disabled></label>
       <label>End Date<input type="date" id="end"></label>
-      <label>Time<select id="at"><option value="">After the latest candle (live if today)</option><option value="open">Before the open</option></select></label>
+      <label>Time<select id="at"><option value="">Latest candle</option></select></label>
       <button class="go" id="go">Visualize</button>
     </div>
     <div class="status" id="status" role="status"></div>
     <div class="chart" id="chart"></div>`;
   document.getElementById("go").onclick = visualize;
-  document.getElementById("end").oninput = e => { latest = !e.target.value; };
+  document.getElementById("end").onchange = e => {  // a new day has its own hours: start from its latest candle
+    latest = !e.target.value;
+    document.getElementById("at").value = "";
+    visualize();
+  };
   visualize();
 }
 
 async function visualize() {
   clearTimeout(timer);
+  const mine = ++asked;
   const end = document.getElementById("end"), pick = document.getElementById("at"), at = pick.value, status = document.getElementById("status");
   status.textContent = "Loading…";
   try {
-    const q = new URLSearchParams({ ...(!latest && end.value && { end: end.value }), ...(at && { at }) });
+    const q = new URLSearchParams({ ...((!latest || at) && end.value && { end: end.value }), ...(at && { at }) });  // a picked time stays on the day shown
     const res = await fetch(`/api/price-based?${q}`);
     const data = await res.json();
+    if (mine !== asked) return;  // a newer request was sent meanwhile
     if (!res.ok) throw new Error(data.error || res.statusText);
     end.value = data.end;
-    pick.length = 2;  // keep latest and before the open, then only the hours that day has
-    pick.insertAdjacentHTML("beforeend", data.hours.map(h => `<option value="${h}">After the ${h}:00 candle</option>`).join(""));
-    pick.value = at;
+    pick.innerHTML = (data.live ? `<option value="">Live</option>` : "") + `<option value="open">Before the open</option>` +
+      data.hours.map(h => `<option value="${h}">After the ${h}:00 candle</option>`).join("");
+    pick.value = at || (data.live ? "" : data.hour);  // a past day's latest candle is its last hour
     const live = data.live && !at;
     status.textContent = `${data.symbol} · ${data.date} · ${data.hour == null ? "before the open" : `after the ${data.hour}:00 candle`} · ${data.n} similar days` +
       (live ? ` · live, updated ${new Date().toLocaleTimeString("en-US")}` : "");
     draw(data);
-    if (!at && (live || latest)) timer = setTimeout(visualize, 60000);  // a new candle closes every hour; following the newest day, the next one starts after midnight
+    if (live) timer = setTimeout(visualize, 60000);  // a new candle closes every hour
   } catch (e) {
     status.innerHTML = `<span class="err">${e.message}</span>`;
   }
@@ -128,7 +134,7 @@ function draw(data) {
   const during = data.hour != null, high = data.high - data.open, low = data.low - data.open;
   const pts = data.cells.map(c => c.points).concat(0, high, low), lo = Math.min(...pts) - 2, hi = Math.max(...pts) + 2;
   const y = d => T + (H - T - B) * (hi - d) / (hi - lo);
-  const days = data.cells.map(c => c.days), least = Math.min(2, ...days), most = Math.max(2, ...days);
+  const days = data.cells.map(c => c.days), least = Math.min(data.min_days, ...days), most = Math.max(data.min_days, ...days);
   const t = c => most === least ? 1 : (c - least) / (most - least);
   const step = [5, 10, 20, 25, 50, 100, 200].find(s => (hi - lo) / s <= 10);
   const ticks = [];
@@ -138,7 +144,7 @@ function draw(data) {
   // Dim cells first so bright ones sit on top; thicker = more days, the brightest fill their whole point so neighbours form one band.
   const cell = (H - T - B) / (hi - lo);
   const cells = data.cells.slice().sort((a, b) => a.days - b.days).map(c =>
-    `<line x1="${L}" x2="${W - R}" y1="${y(c.points)}" y2="${y(c.points)}" stroke="${viridis(t(c.days))}" stroke-width="${cell * (0.3 + 0.7 * t(c.days))}"/>`).join("");
+    `<line x1="${L}" x2="${W - R}" y1="${y(c.points)}" y2="${y(c.points)}" stroke="${viridis(t(c.days))}" stroke-width="${Math.max(1, cell * (0.3 + 0.7 * t(c.days)))}"/>`).join("");
   const mark = (d, label, dash) => `<line class="mark" x1="${L}" x2="${W - R}" y1="${y(d)}" y2="${y(d)}" ${dash ? 'stroke-dasharray="6 4"' : ""}/>
     <text class="mark" x="${L + 6}" y="${y(d) - 5}">${label}</text>`;
   const marks = during ? mark(0, `open ${fmt(data.open)}`) + mark(high, `high so far ${fmt(data.high)}`, true) + mark(low, `low so far ${fmt(data.low)}`, true) : "";
