@@ -27,6 +27,7 @@
   label { display:flex; flex-direction:column; gap:6px; font-size:12px; color:var(--muted); }
   input, select { background:var(--plot-bg); color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:14px; color-scheme:dark; }
   input:disabled { color:var(--muted); width:70px; }
+  label[hidden] { display:none; }
   button.go { padding:10px 22px; border:0; border-radius:10px; font-weight:700; font-size:14px; color:#fff; cursor:pointer;
               background:linear-gradient(90deg,var(--accent),var(--accent2)); transition:scale 150ms ease-out; }
   @media (prefers-reduced-motion:no-preference) { button.go:active { scale:0.96; } }
@@ -95,7 +96,7 @@ function show(mod) {
       <label>End Date<input type="date" id="end"></label>
       <label>Time<select id="at"><option value="">Latest candle</option></select></label>
       <label>Mode<select id="mode"><option value="default">Default</option><option value="quantistat">QuantiStat</option></select></label>
-      <label>Period<select id="period" disabled>${["3mo", "6mo", "1y", "2y", "ytd", "max"].map(p =>  /* app.py PERIODS */
+      <label hidden>Period<select id="period">${["3mo", "6mo", "1y", "2y", "ytd", "max"].map(p =>  /* app.py PERIODS */
         `<option${p === "2y" ? " selected" : ""}>${p}</option>`).join("")}</select></label>
       <button class="go" id="go">Visualize</button>
     </div>
@@ -104,9 +105,9 @@ function show(mod) {
   document.getElementById("go").onclick = visualize;
   document.getElementById("mode").onchange = e => {  // QuantiStat answers before the open only, over a Period window
     const quantistat = e.target.value === "quantistat", pick = document.getElementById("at");
-    pick.value = quantistat ? "open" : "";  // not the old hour while the answer loads; default: the latest candle
+    pick.value = "";  // not the old hour while the answer loads; visualize() asks QuantiStat for the open
     pick.disabled = quantistat;
-    document.getElementById("period").disabled = !quantistat;
+    document.getElementById("period").parentElement.hidden = !quantistat;
     document.getElementById("desc").textContent = quantistat ? QUANTISTAT_DESC : MODULES.price[1];
     visualize();
   };

@@ -83,6 +83,8 @@ def test_bad_requests_are_refused(monkeypatch):
     assert client.get(f"/api/price-based?end={END}&at=24").status_code == 400
     assert client.get("/api/price-based?end=2026-01-01").status_code == 404  # no day after it yet
     assert client.get("/api/price-based?end=2000-01-01").status_code == 404  # no history before it
+    assert client.get(f"/api/price-based?end={END}&at=open&mode=nope").status_code == 400
+    assert client.get(f"/api/price-based?end={END}&at=open&mode=quantistat&period=5y").status_code == 400
 
 
 def two_levels() -> pd.DataFrame:
@@ -114,6 +116,7 @@ def test_the_period_counts_back_from_the_end_date(monkeypatch):
     assert a["cells"] == later["cells"] and a["n"] == later["n"] == sum(window)
     assert serve(monkeypatch, full).get(f"{q}&period=6mo").get_json()["n"] > a["n"]
     assert serve(monkeypatch, full).get(q).get_json()["period"] == "2y"
+    assert serve(monkeypatch, full).get("/api/price-based?end=2025-12-10&at=open&period=5y").get_json()["period"] is None  # no Period outside the mode
 
 
 def test_quantistat_mode_only_answers_before_the_open(monkeypatch):
@@ -121,9 +124,6 @@ def test_quantistat_mode_only_answers_before_the_open(monkeypatch):
     assert client.get(f"/api/price-based?end={END}&at=open&mode=quantistat").status_code == 200
     assert client.get(f"/api/price-based?end={END}&at=5&mode=quantistat").status_code == 400
     assert client.get(f"/api/price-based?end={END}&mode=quantistat").status_code == 400  # latest candle / live
-    assert client.get(f"/api/price-based?end={END}&at=open&mode=quantistat&period=5y").status_code == 400
-    assert client.get(f"/api/price-based?end={END}&at=open&mode=nope").status_code == 400
-    assert client.get(f"/api/price-based?end={END}&at=open&period=5y").status_code == 200  # no Period outside the mode
 
 
 def test_quantistat_mode_uses_the_same_days_as_the_default_mode(monkeypatch):
