@@ -143,16 +143,18 @@ def odds(extra: np.ndarray, now: float, sign: int, today_range: float,
 def heat(extra: np.ndarray, now: float, sign: int, today_range: float,
          origin: float) -> list[tuple[float, int]]:
     """Where the HOD (LOD) of each similar day that went further ended, in today's prices,
-    counted per 1-point cell whole points from `origin` (the open): the price heatmap."""
+    counted per 1-point cell whole points from `origin` (the open), a HOD (LOD) that rounds onto
+    the open counted 1 point above (below) it: the price heatmap."""
     if np.isnan(today_range):
         return []
-    prices = origin + np.round(now - origin + sign * extra[extra > 1e-9] * today_range)
+    points = np.round(now - origin + sign * extra[extra > 1e-9] * today_range)
+    prices = origin + np.where(points == 0, sign, points)
     return [(float(p), int(c)) for p, c in zip(*np.unique(prices, return_counts=True))]
 
 
 def brightest(cells: list[tuple[float, int]], now: float, top: int = 3) -> list[tuple[float, int]]:
     """The `top` heatmap cells where the most similar days ended (nearest to price first on a tie)."""
-    return sorted(sorted(cells, key=lambda b: (-b[1], abs(b[0] - now)))[:top], key=lambda b: b[0])
+    return sorted(sorted(cells, key=lambda c: (-c[1], abs(c[0] - now)))[:top], key=lambda c: c[0])
 
 
 def plot_heat(f: dict, open_price: float, title: str):
@@ -165,8 +167,8 @@ def plot_heat(f: dict, open_price: float, title: str):
 
     plt.style.use("dark_background")
     fig, ax = plt.subplots(figsize=(10, 7))
-    cells = [b for side in ("HOD", "LOD") for b in f[side]["heat"]
-            if b[1] >= max(MIN_DAYS, 0.5 * max(c for _, c in f[side]["heat"]))]
+    cells = [cell for side in ("HOD", "LOD") for cell in f[side]["heat"]
+             if cell[1] >= max(MIN_DAYS, 0.5 * max(c for _, c in f[side]["heat"]))]
     norm = Normalize(MIN_DAYS, max([c for _, c in cells], default=MIN_DAYS + 1))
     for price, count in cells:
         ax.axhline(price - open_price, color=plt.cm.viridis(norm(count)), linewidth=2 + 4 * norm(count))

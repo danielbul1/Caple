@@ -81,6 +81,7 @@ let timer = null, latest = true, asked = 0;  // latest: no End Date picked, so o
 
 function show(mod) {
   clearTimeout(timer);
+  asked++;  // a request still in flight belongs to the page being left
   document.querySelectorAll(".tile").forEach(t => t.removeAttribute("aria-current"));
   document.querySelector(`.tile[data-mod="${mod}"]`).setAttribute("aria-current", "page");
   [document.getElementById("title").textContent, document.getElementById("desc").textContent] = MODULES[mod];
@@ -126,6 +127,7 @@ async function visualize() {
     if (live) timer = setTimeout(visualize, 60000);  // a new candle closes every hour
   } catch (e) {
     status.innerHTML = `<span class="err">${e.message}</span>`;
+    if (mine === asked && latest && !at) timer = setTimeout(visualize, 60000);  // live keeps trying after an error
   }
 }
 
@@ -156,7 +158,10 @@ function draw(data) {
       return from > to ? "" : `<text x="${W - R + 44}" y="${T + barH * (n + 0.5 - k) + 4}">${from === to ? from : `${from}–${to}`}</text>`;
     }).join("") + `
      <text transform="translate(${W - R + 80},${(T + H - B) / 2}) rotate(90)" text-anchor="middle">days</text>`;
-  const top = side => data.cells.filter(c => c.side === side).sort((a, b) => b.days - a.days)[0];
+  const top = side => {  // as levels.brightest: most days, nearest the high (low) so far on a tie
+    const now = side === "HOD" ? high : low;
+    return data.cells.filter(c => c.side === side).sort((a, b) => b.days - a.days || Math.abs(a.points - now) - Math.abs(b.points - now))[0];
+  };
   const label = `Heatmap of ${data.n} similar days. Most days ended at ` +
     ["HOD", "LOD"].map(s => top(s) ? `${s} ${top(s).points > 0 ? "+" : ""}${top(s).points} points (${top(s).days} days)` : `no ${s} cell`).join(" and ") + " from the open.";
   const chart = document.getElementById("chart");

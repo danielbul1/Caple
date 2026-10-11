@@ -108,6 +108,9 @@ def test_heat_counts_where_the_days_that_went_further_ended():
     assert levels.heat(np.array([1.0, 1.15]), 100.0, 1, 10.0, 0.0) == [(110.0, 1), (112.0, 1)]  # 1-point cells
     assert levels.heat(extra, 100.0, 1, 10.0, origin=0.25) == [(110.25, 2), (130.25, 1)]  # whole points from the open
     assert levels.heat(extra, 100.0, 1, np.nan, 0.0) == []
+    near = np.array([0.02, 0.03])  # under half a point past the open: still a cell above (below) it, never at 0
+    assert levels.heat(near, 100.0, 1, 10.0, 100.0) == [(101.0, 2)]
+    assert levels.heat(near, 100.0, -1, 10.0, 100.0) == [(99.0, 2)]
 
 
 def test_weighted_quantile_with_equal_weights_is_numpys_and_ignores_zero_weights():
