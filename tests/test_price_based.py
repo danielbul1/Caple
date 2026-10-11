@@ -71,11 +71,14 @@ def test_live_today_answers_after_the_latest_candle(monkeypatch):
     assert not serve(monkeypatch, full).get(f"/api/price-based?end={END}").get_json()["live"]
 
 
-def test_bad_requests(monkeypatch):
+def test_no_end_date_answers_for_the_latest_day(monkeypatch):
+    latest = serve(monkeypatch, walk(90)).get("/api/price-based").get_json()
+    assert latest["date"] == "2025-04-01" and latest["end"] == "2025-03-31"  # DST spills one candle into 04-01
+
+
+def test_bad_requests_are_refused(monkeypatch):
     client = serve(monkeypatch, walk(90))
     assert client.get("/api/price-based?end=nope").status_code == 400
-    latest = client.get("/api/price-based").get_json()  # no End Date: the latest day
-    assert latest["date"] == "2025-04-01" and latest["end"] == "2025-03-31"  # DST spills one candle into 04-01
     assert client.get(f"/api/price-based?end={END}&at=24").status_code == 400
     assert client.get("/api/price-based?end=2026-01-01").status_code == 404  # no day after it yet
     assert client.get("/api/price-based?end=2000-01-01").status_code == 404  # no history before it

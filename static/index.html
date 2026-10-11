@@ -68,7 +68,7 @@
 
 <script>
 const MODULES = {
-  price: ["HOD/LOD Price Based", "Where the high (above 0) and low (below 0) of similar past days ended, in points from the 00:00 open. Each day is measured against its own expected range and converted to today's points. Brighter and thicker = more days ended there; cells with a single day are hidden."],
+  price: ["HOD/LOD Price Based", "Where the HOD (above 0) and LOD (below 0) of similar past days ended, in points from the 00:00 open. Each day is measured against its own expected range and converted to today's points. Brighter and thicker = more days ended there; cells with a single day are hidden."],
   time: ["HOD/LOD Time Based", "At what hour the high and low of the day are usually set."],
   validator: ["Level Validator", "The record of levels set in advance, and the chance a price you type gets reached."],
   seasonal: ["Seasonal Bias", "The average path of the month and how often its bias call was right."],
@@ -77,6 +77,7 @@ const MODULES = {
 const VIRIDIS = ["#440154", "#3b528b", "#21918c", "#5ec962", "#fde725"];
 const viridis = t => VIRIDIS[Math.min(VIRIDIS.length - 1, Math.round(t * (VIRIDIS.length - 1)))];
 const fmt = n => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+const REFRESH_MS = 60000;  // live checks for a new candle every minute
 let timer = null, latest = true, asked = 0;  // latest: no End Date picked, so open on the newest day
 
 function show(mod) {
@@ -124,10 +125,10 @@ async function visualize() {
     status.textContent = `${data.symbol} · ${data.date} · ${data.hour == null ? "before the open" : `after the ${data.hour}:00 candle`} · ${data.n} similar days` +
       (live ? ` · live, updated ${new Date().toLocaleTimeString("en-US")}` : "");
     draw(data);
-    if (live) timer = setTimeout(visualize, 60000);  // a new candle closes every hour
+    if (live) timer = setTimeout(visualize, REFRESH_MS);  // a new candle closes every hour
   } catch (e) {
     status.innerHTML = `<span class="err">${e.message}</span>`;
-    if (mine === asked && latest && !at) timer = setTimeout(visualize, 60000);  // live keeps trying after an error
+    if (mine === asked && latest && !at) timer = setTimeout(visualize, REFRESH_MS);  // live keeps trying after an error
   }
 }
 

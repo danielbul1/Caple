@@ -33,7 +33,7 @@ TOP, TOLERANCE = 3, 3.0
 
 
 def bright_lines(distances: np.ndarray, top: int = TOP) -> np.ndarray:
-    """The `top` most crowded 1-point cells (QuantiStat's brightest lines), closest to 0 on ties."""
+    """The `top` most crowded 1-point cells (QuantiStat's brightest), closest to 0 on ties."""
     values, counts = np.unique(np.round(distances), return_counts=True)
     order = np.lexsort((np.abs(values), -counts))
     return np.sort(values[order[:top]])

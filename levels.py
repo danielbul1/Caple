@@ -142,9 +142,9 @@ def odds(extra: np.ndarray, now: float, sign: int, today_range: float,
 
 def heat(extra: np.ndarray, now: float, sign: int, today_range: float,
          origin: float) -> list[tuple[float, int]]:
-    """Where the HOD (LOD) of each similar day that went further ended, in today's prices,
-    counted per 1-point cell whole points from `origin` (the open), a HOD (LOD) that rounds onto
-    the open counted 1 point above (below) it: the price heatmap."""
+    """The price heatmap: how many similar days that went further had their HOD (LOD) in each
+    1-point cell, in today's prices. Cells sit a whole number of points from `origin` (the open);
+    a HOD (LOD) that rounds onto the open counts in the cell 1 point above (below) it."""
     if np.isnan(today_range):
         return []
     points = np.round(now - origin + sign * extra[extra > 1e-9] * today_range)
