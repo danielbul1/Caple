@@ -2,6 +2,7 @@ from datetime import date
 
 import numpy as np
 import pandas as pd
+import pytest
 
 import app
 import lse_source
@@ -38,14 +39,19 @@ def test_cells_are_one_point_from_the_open_and_hide_single_days(monkeypatch):
     assert sum(c["days"] for c in cells if c["side"] == "HOD") <= data["n"]
 
 
-def test_nothing_after_the_picked_hour_changes_the_answer_for_that_hour(monkeypatch):
+@pytest.mark.parametrize("at, last, live", [("open", 0, False), ("5", 5, False), ("", 5, True)])
+def test_nothing_after_the_picked_time_changes_the_answer_for_that_time(monkeypatch, at, last, live):
+    # Before the open, after an hour, and live (the latest candle is 05:00): the same answer as
+    # the full history asked for that time.
     full = walk(90)
-    cut = full[full.index <= pd.Timestamp(f"{TARGET} 05:00", tz="America/New_York")]
+    cut = full[full.index <= pd.Timestamp(f"{TARGET} {last:02}:00", tz="America/New_York")].copy()
+    if at == "open":  # before the open only the 00:00 Open is known, not how that candle went
+        cut.iloc[-1, cut.columns.get_indexer(["High", "Low", "Close"])] += [50, -50, 20]
     keys = ["date", "hour", "open", "high", "low", "n", "cells"]
-    a = serve(monkeypatch, cut).get(f"/api/price-based?end={END}&at=5").get_json()
-    b = serve(monkeypatch, full).get(f"/api/price-based?end={END}&at=5").get_json()
-    assert a["hour"] == 5 and {k: a[k] for k in keys} == {k: b[k] for k in keys}
-    assert a["high"] > a["open"] > a["low"]
+    a = serve(monkeypatch, cut, today=TARGET if live else date(2026, 1, 1)).get(f"/api/price-based?end={END}" + (at and f"&at={at}")).get_json()
+    b = serve(monkeypatch, full).get(f"/api/price-based?end={END}&at={at or last}").get_json()
+    assert a["live"] == live and {k: a[k] for k in keys} == {k: b[k] for k in keys}
+    assert (a["high"] > a["open"] > a["low"]) == (at != "open")
 
 
 def test_live_today_answers_after_the_latest_candle(monkeypatch):
