@@ -1,8 +1,9 @@
 """Caple: a small server for the HOD/LOD page and hourly ES candles from London Strategic Edge (LSE).
 
-The user picks a date D. The response holds every 1h candle that closed before
-D (the last one is D-1 23:00 New York time) going back LOOKBACK_DAYS days. LSE's
-history starts mid 2016, so any date with that much history before it can be picked.
+/api/price-based draws the page's Price Based heatmap (see its docstring). /api/candles: the user
+picks a date D and gets every 1h candle that closed before D (the last one is D-1 23:00 New York
+time) going back LOOKBACK_DAYS days. LSE's history starts mid 2016, so any date with that much
+history before it can be picked.
 """
 
 from datetime import date, datetime, timedelta
@@ -128,7 +129,7 @@ def price_based():
     from the 00:00 open, cells with a single day left out. at=open is before the open, at=H after
     the H:00 candle, no at after the latest candle (live for today). Only candles up to that point
     are used, so nothing later can change the answer."""
-    from levels import day_lines, today_yardstick, use_yardstick  # levels imports this module
+    from levels import MIN_DAYS, day_lines, today_yardstick, use_yardstick  # levels imports this module
     from quantistat import daily_stats
 
     raw_end, at = request.args.get("end"), request.args.get("at")
@@ -148,7 +149,7 @@ def price_based():
     hours = sorted(set(candles.index.hour[days == target]))
     hour = None if at == "open" else hours[-1] if at is None else int(at)
     if hour is not None and hour not in hours:
-        return jsonify({"error": f"{target} has no {hour}:00 candle. Pick another time, or Before the open."}), 404
+        return jsonify({"error": f"{target} has no {hour}:00 candle. Pick an hour that has one, or before the open."}), 404
     known = candles[(days < target) | ((days == target) & (candles.index.hour <= (hour or 0)))]
     stats = daily_stats(known)
     use_yardstick(stats)
@@ -167,7 +168,7 @@ def price_based():
             "low": float(row["low"]),
             "n": row["n"],
             "cells": [{"side": side, "points": round(p - open_), "days": c}
-                      for side in ("HOD", "LOD") for p, c in row[side]["heat"] if c >= 2],
+                      for side in ("HOD", "LOD") for p, c in row[side]["heat"] if c >= MIN_DAYS],
         }
     )
 

@@ -101,11 +101,11 @@ def test_day_lines_forecast_each_hour_from_earlier_days_only():
 
 
 def test_heat_counts_where_the_days_that_went_further_ended():
-    # Past HODs 1, 1.05 and 3 ranges above the high so far (done days left out), 10-point range, 2-point bins.
+    # Past HODs 1, 1.05 and 3 ranges above the high so far (done days left out), 10-point range, 1-point cells.
     extra = np.array([0.0, 1.0, 1.05, 3.0])
-    assert levels.heat(extra, 100.0, 1, 10.0, width=2) == [(110.0, 2), (130.0, 1)]
-    assert levels.heat(extra, 100.0, -1, 10.0, width=2) == [(70.0, 1), (90.0, 2)]  # LOD: below the low so far
-    assert levels.heat(np.array([1.0, 1.15]), 100.0, 1, 10.0) == [(110.0, 1), (112.0, 1)]  # 1-point bins
+    assert levels.heat(extra, 100.0, 1, 10.0) == [(110.0, 2), (130.0, 1)]
+    assert levels.heat(extra, 100.0, -1, 10.0) == [(70.0, 1), (90.0, 2)]  # LOD: below the low so far
+    assert levels.heat(np.array([1.0, 1.15]), 100.0, 1, 10.0) == [(110.0, 1), (112.0, 1)]  # 1-point cells
     assert levels.heat(extra, 100.0, 1, 10.0, origin=0.25) == [(110.25, 2), (130.25, 1)]  # whole points from the open
     assert levels.heat(extra, 100.0, 1, np.nan) == []
 

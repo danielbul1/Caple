@@ -45,6 +45,7 @@ QUANTILES = [0.25, 0.5, 0.75]
 # FOMC/CPI days only (better on 2022+, worse on 2017-2021), so events only get a warning.
 EVENT_SIZE = {"FOMC": 1.3, "CPI": 1.2}
 K_NEAREST = 150  # 300 was worse on 2018-2021 from 9:00 on
+MIN_DAYS = 2  # heatmap cells where fewer similar days ended are hidden: one day is noise
 # Log-scale weights of yesterday's, the 5-day and the 22-day average Parkinson volatility in the
 # yardstick (HAR, Corsi 2009), fit on 2016-2021 by regressing the log of each day's range on them;
 # HAR_SCALE (e^intercept) only makes it read as a typical day's range in points.
@@ -139,13 +140,13 @@ def odds(extra: np.ndarray, now: float, sign: int, today_range: float,
             [now + sign * wquantile(extra[more], w[more], 1 - p) * today_range for p in REACH])
 
 
-def heat(extra: np.ndarray, now: float, sign: int, today_range: float, width: float = 1.0,
+def heat(extra: np.ndarray, now: float, sign: int, today_range: float,
          origin: float = 0.0) -> list[tuple[float, int]]:
     """Where the HOD (LOD) of each similar day that went further ended, in today's prices,
-    counted per `width`-point bin whole points from `origin` (the open): the price heatmap."""
+    counted per 1-point cell whole points from `origin` (the open): the price heatmap."""
     if np.isnan(today_range):
         return []
-    prices = origin + np.round((now - origin + sign * extra[extra > 1e-9] * today_range) / width) * width
+    prices = origin + np.round(now - origin + sign * extra[extra > 1e-9] * today_range)
     return [(float(p), int(c)) for p, c in zip(*np.unique(prices, return_counts=True))]
 
 
@@ -156,8 +157,8 @@ def brightest(bins: list[tuple[float, int]], now: float, top: int = 3) -> list[t
 
 def plot_heat(f: dict, open_price: float, title: str):
     """QuantiStat-style "HOD/LOD Price Based" heatmap of one forecast row (see day_lines): points
-    from the 00:00 open, a line per 1-point bin where 2+ similar days ended and at least half as
-    many as in that side's brightest bin (fewer would bury it), brighter and thicker = more days; dashed = the 75/50/25% levels; thin white = the open and the high/low so far."""
+    from the 00:00 open, a line per 1-point cell where 2+ (MIN_DAYS) similar days ended and at least half as
+    many as in that side's brightest cell (fewer would bury it), brighter and thicker = more days; dashed = the 75/50/25% levels; thin white = the open and the high/low so far."""
     import matplotlib.pyplot as plt
     from matplotlib.cm import ScalarMappable
     from matplotlib.colors import Normalize
@@ -165,8 +166,8 @@ def plot_heat(f: dict, open_price: float, title: str):
     plt.style.use("dark_background")
     fig, ax = plt.subplots(figsize=(10, 7))
     bins = [b for side in ("HOD", "LOD") for b in f[side]["heat"]
-            if b[1] >= max(2, 0.5 * max(c for _, c in f[side]["heat"]))]
-    norm = Normalize(2, max([c for _, c in bins], default=3))
+            if b[1] >= max(MIN_DAYS, 0.5 * max(c for _, c in f[side]["heat"]))]
+    norm = Normalize(MIN_DAYS, max([c for _, c in bins], default=MIN_DAYS + 1))
     for price, count in bins:
         ax.axhline(price - open_price, color=plt.cm.viridis(norm(count)), linewidth=2 + 4 * norm(count))
     for side in ("HOD", "LOD"):

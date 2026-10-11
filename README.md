@@ -37,7 +37,7 @@ python levels.py 2025-01-02 open --2y   # learn only from the two years before t
 Besides the levels it prints the brightest heatmap levels as prices (where the most similar
 past days ended) and saves `hodlod.png`, a QuantiStat-style "HOD/LOD Price Based" heatmap:
 points from the 00:00 open (price on the right axis), HOD above 0, LOD below, one line per
-1-point bin, brighter and thicker = more similar days ended there (bins under half the
+1-point cell, brighter and thicker = more similar days ended there (cells under half the
 brightest are hidden); dashed = the 75/50/25% levels, thin white = the open and the high/low
 so far. The dashed levels are the calibrated forecast; a bright line alone is no better than a
 random day's (see Scorecard).
@@ -170,7 +170,7 @@ still to come, which is almost always true, so it carries no information there.
 heatmap for the first day after the End Date (no End Date: the latest day): points from the
 00:00 open, HOD above 0, LOD below, one line per 1-point cell (whole points from the open)
 where similar past days that went past the high/low so far ended (scaled to today's
-yardstick; cells of a single day are hidden), brighter and thicker = more days. No computed
+expected range; cells of a single day are hidden), brighter and thicker = more days. No computed
 levels are drawn; hovering shows only the points from the open. `at=open` is before the
 open, `at=H` after the H:00 candle (open and high/low so far marked), no `at` after the
 latest candle: live for today, the page refreshes every minute (data every 2 minutes). Only
