@@ -142,7 +142,8 @@ def price_based():
     are used, so nothing later can change the answer.
 
     mode=quantistat mimics QuantiStat: raw points without the yardstick, every day in the Period
-    window (3mo/6mo/1y/2y/ytd/max, default 2y) ending on the End Date, before the open only."""
+    window (3mo/6mo/1y/2y/ytd/max, default 2y) ending on the End Date, before the open only. It
+    drops the same days as the default mode (daily_stats: no 00:00 candle, expiry weeks, roll jumps)."""
     from levels import MIN_DAYS, day_lines, today_yardstick, use_yardstick  # levels imports this module
     from quantistat import daily_stats
 

@@ -84,12 +84,12 @@ def test_bad_requests_are_refused(monkeypatch):
     assert client.get("/api/price-based?end=2000-01-01").status_code == 404  # no history before it
 
 
-def two_levels(days: int = 120, step: int = 40) -> pd.DataFrame:
-    """Every day the same shape, at a price level of 3000 for the first `step` days and 6000 after:
+def two_levels() -> pd.DataFrame:
+    """120 days of the same shape, at a price level of 3000 for the first 40 days and 6000 after:
     the same day in yardsticks, half the points (HOD +12.6 / LOD -9.6 at 3000, +25.2 / -19.2 at 6000)."""
-    idx = pd.date_range("2025-01-01", periods=24 * days, freq="h", tz="America/New_York")
+    idx = pd.date_range("2025-01-01", periods=24 * 120, freq="h", tz="America/New_York")
     shape = 1 + 0.001 * np.array([0, 1, 2, 3, 4, 3, 2, 1, 0, -1, -2, -3] * 2)
-    level = np.where(np.arange(len(idx)) < 24 * step, 3000.0, 6000.0)
+    level = np.where(np.arange(len(idx)) < 24 * 40, 3000.0, 6000.0)
     c = pd.DataFrame({"Open": level * np.r_[1, shape[:-1]][idx.hour], "Close": level * shape[idx.hour], "Volume": 1.0}, index=idx)
     c["High"] = c[["Open", "Close"]].max(axis=1) + level * 0.0002
     c["Low"] = c[["Open", "Close"]].min(axis=1) - level * 0.0002
