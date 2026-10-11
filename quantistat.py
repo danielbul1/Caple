@@ -1,8 +1,9 @@
 """QuantiStat-style HOD/LOD statistics for ES, drawn with matplotlib.
 
 Takes LSE's ten years of hourly ES candles and looks only at past
-days on the same weekday as the target day (e.g. every Monday). backtest.py showed
-this beats the original tool's same day-of-month, which leaves only ~16 noisy days.
+days on the same weekday as the target day (e.g. every Monday). This is not what QuantiStat
+does: it takes every day in its Period window (default 2y) in raw points, as the app's
+QuantiStat mode (app.py) does. backtest.py showed the sample barely matters.
 A day is a calendar day in New York time (00:00-23:00), so it opens at the
 00:00 candle and the previous day must have ended before running this.
 

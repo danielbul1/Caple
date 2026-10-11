@@ -21,6 +21,8 @@ Open http://localhost:5000.
 ## API
 
 - `GET /api/price-based?end=YYYY-MM-DD&at=open|0..23`: the Price Based heatmap (see below).
+  `&mode=quantistat&period=3mo|6mo|1y|2y|ytd|max` (default 2y, before the open only) mimics
+  QuantiStat: raw points without the yardstick, every day in the Period window ending on the End Date.
 - `GET /api/available-dates`: dates with 729 days of candles before them.
 - `GET /api/candles?date=YYYY-MM-DD`: every 1h candle that closed before the date, 729 days back, as JSON.
 - `GET /api/candles?date=YYYY-MM-DD&format=csv`: candles as a CSV download.
@@ -76,7 +78,7 @@ Change in HOD+LOD pinball loss vs the model above; negative is better, t in brac
 | Match days on share of the range used so far ("% ATR used") | 0 | -0.3% | ~0 | no |
 | Weight recent days more (half-life 150/500 days) | ~0 | ~0 | ~0 | no |
 | LightGBM quantile regression (7-9 features) | +0.6% worse | -2% (-4) | -4% (-6) | no: fifths do the same simply |
-| Day-of-month / weekday samples (QuantiStat) | worse/0 | - | - | no |
+| Day-of-month / weekday samples | worse/0 | - | - | no |
 | Bright heatmap lines | no better than a random day | | | no |
 
 The size of the day is predictable (implied volatility does most of it); its direction is
@@ -96,7 +98,7 @@ numbers are from before Yahoo was dropped; scorecard.py now compares raw points 
 - Scaling matters most: raw points (QuantiStat) lose 28.3/31.5 points (HOD/LOD pinball)
   and their "75%" level is reached on 86% of days (prices rose since 2018); scaled by VIX9D
   22.9/27.4 and calibrated (76/51/27%).
-- Which past days you pick barely matters: same day of month (QuantiStat), same weekday
+- Which past days you pick barely matters: same day of month, same weekday
   and all days are within noise of each other once scaled by VIX9D.
 - The bright heatmap lines know nothing about the day: the HOD/LOD lands within 3 points of
   one of the 3 brightest lines on ~31% of days, and so does another random day's HOD/LOD
@@ -226,8 +228,9 @@ The charts and backtest use LSE's 10 years of ES.F 1h bars.
 python quantistat.py 2026-10-12 7840   # target day (default today), optional 00:00 open
 ```
 
-Keeps only past days on the target's
-weekday (calendar days 00:00-23:00 NY time). Quarterly expiry weeks and days where
+Keeps only past days on the target's weekday, calendar days 00:00-23:00 NY time. That is this
+script's choice: QuantiStat itself uses every day in its Period window in raw points, as the
+app's QuantiStat mode does. Quarterly expiry weeks and days where
 the continuous series jumps between contracts are dropped (bad HOD/LOD). Saves `time_based.png` (hour
 of HOD/LOD split by bullish/bearish day) and `price_based.png` (HOD/LOD distance
 from the open in points, split by bias; above 0 = HOD, below 0 = LOD, brighter =

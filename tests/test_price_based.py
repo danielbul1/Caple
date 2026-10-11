@@ -82,3 +82,43 @@ def test_bad_requests_are_refused(monkeypatch):
     assert client.get(f"/api/price-based?end={END}&at=24").status_code == 400
     assert client.get("/api/price-based?end=2026-01-01").status_code == 404  # no day after it yet
     assert client.get("/api/price-based?end=2000-01-01").status_code == 404  # no history before it
+
+
+def two_levels(days: int = 120, step: int = 40) -> pd.DataFrame:
+    """Every day the same shape, at a price level of 3000 for the first `step` days and 6000 after:
+    the same day in yardsticks, half the points (HOD +12.6 / LOD -9.6 at 3000, +25.2 / -19.2 at 6000)."""
+    idx = pd.date_range("2025-01-01", periods=24 * days, freq="h", tz="America/New_York")
+    shape = 1 + 0.001 * np.array([0, 1, 2, 3, 4, 3, 2, 1, 0, -1, -2, -3] * 2)
+    level = np.where(np.arange(len(idx)) < 24 * step, 3000.0, 6000.0)
+    c = pd.DataFrame({"Open": level * np.r_[1, shape[:-1]][idx.hour], "Close": level * shape[idx.hour], "Volume": 1.0}, index=idx)
+    c["High"] = c[["Open", "Close"]].max(axis=1) + level * 0.0002
+    c["Low"] = c[["Open", "Close"]].min(axis=1) - level * 0.0002
+    return c
+
+
+def test_default_mode_compares_days_in_yardsticks_and_quantistat_mode_in_raw_points(monkeypatch):
+    client = serve(monkeypatch, two_levels())
+    hod = lambda q: {c["points"] for c in client.get(f"/api/price-based?end=2025-04-24&at=open{q}").get_json()["cells"] if c["side"] == "HOD"}
+    assert min(hod("")) >= 25  # the days at 3000 count as the same +25 day at today's 6000
+    assert {13, 25} <= hod("&mode=quantistat&period=max")  # the days at 3000 stay at their raw +13
+
+
+def test_the_period_counts_back_from_the_end_date(monkeypatch):
+    full, q = walk(400), "/api/price-based?end=2025-12-10&at=open&mode=quantistat"
+    a = serve(monkeypatch, full).get(f"{q}&period=3mo").get_json()
+    later = serve(monkeypatch, full, today=date(2030, 6, 1)).get(f"{q}&period=3mo").get_json()
+    window_only = full[full.index >= pd.Timestamp("2025-09-11", tz="America/New_York")]  # 3 months up to 12-10
+    b = serve(monkeypatch, window_only).get(f"{q}&period=max").get_json()
+    assert a["mode"] == "quantistat" and a["period"] == "3mo"
+    assert a["cells"] == later["cells"] == b["cells"] and a["n"] == later["n"] == b["n"]
+    assert serve(monkeypatch, full).get(f"{q}&period=6mo").get_json()["n"] > a["n"]
+    assert serve(monkeypatch, full).get(q).get_json()["period"] == "2y"
+
+
+def test_quantistat_mode_only_answers_before_the_open(monkeypatch):
+    client = serve(monkeypatch, walk(90))
+    assert client.get(f"/api/price-based?end={END}&at=open&mode=quantistat").status_code == 200
+    assert client.get(f"/api/price-based?end={END}&at=5&mode=quantistat").status_code == 400
+    assert client.get(f"/api/price-based?end={END}&mode=quantistat").status_code == 400  # latest candle / live
+    assert client.get(f"/api/price-based?end={END}&at=open&mode=quantistat&period=5y").status_code == 400
+    assert client.get(f"/api/price-based?end={END}&at=open&mode=nope").status_code == 400

@@ -27,6 +27,9 @@
   label { display:flex; flex-direction:column; gap:6px; font-size:12px; color:var(--muted); }
   input, select { background:var(--plot-bg); color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:14px; color-scheme:dark; }
   input:disabled { color:var(--muted); width:70px; }
+  label.toggle { flex-direction:row; align-items:center; gap:8px; font-size:14px; color:var(--fg); padding-bottom:9px; cursor:pointer; }
+  label.toggle input { accent-color:var(--accent); width:16px; height:16px; margin:0; }
+  [hidden] { display:none !important; }
   button.go { padding:10px 22px; border:0; border-radius:10px; font-weight:700; font-size:14px; color:#fff; cursor:pointer;
               background:linear-gradient(90deg,var(--accent),var(--accent2)); transition:scale 150ms ease-out; }
   @media (prefers-reduced-motion:no-preference) { button.go:active { scale:0.96; } }
@@ -93,11 +96,19 @@ function show(mod) {
       <label>Symbol<input value="ES" disabled></label>
       <label>End Date<input type="date" id="end"></label>
       <label>Time<select id="at"><option value="">Latest candle</option></select></label>
+      <label class="toggle"><input type="checkbox" id="qs">QuantiStat mode</label>
+      <label id="period-field" hidden>Period<select id="period">${["3mo", "6mo", "1y", "2y", "ytd", "max"].map(p =>
+        `<option${p === "2y" ? " selected" : ""}>${p}</option>`).join("")}</select></label>
       <button class="go" id="go">Visualize</button>
     </div>
     <div class="status" id="status" role="status"></div>
     <div class="chart" id="chart"></div>`;
   document.getElementById("go").onclick = visualize;
+  document.getElementById("qs").onchange = e => {  // QuantiStat answers before the open only, over a Period window
+    document.getElementById("period-field").hidden = !e.target.checked;
+    visualize();
+  };
+  document.getElementById("period").onchange = visualize;
   document.getElementById("end").onchange = e => {  // a new day has its own hours: start from its latest candle
     latest = !e.target.value;
     document.getElementById("at").value = "";
@@ -109,10 +120,12 @@ function show(mod) {
 async function visualize() {
   clearTimeout(timer);
   const mine = ++asked;
-  const end = document.getElementById("end"), pick = document.getElementById("at"), at = pick.value, status = document.getElementById("status");
+  const qs = document.getElementById("qs").checked, period = document.getElementById("period").value;
+  const end = document.getElementById("end"), pick = document.getElementById("at"), at = qs ? "open" : pick.value, status = document.getElementById("status");
   status.textContent = "Loading…";
   try {
-    const q = new URLSearchParams({ ...((!latest || at) && end.value && { end: end.value }), ...(at && { at }) });  // a picked time stays on the day shown
+    const q = new URLSearchParams({ ...((!latest || at) && end.value && { end: end.value }), ...(at && { at }),
+                                    ...(qs && { mode: "quantistat", period }) });  // a picked time stays on the day shown
     const res = await fetch(`/api/price-based?${q}`);
     const data = await res.json();
     if (mine !== asked) return;  // a newer request was sent meanwhile
@@ -121,8 +134,10 @@ async function visualize() {
     pick.innerHTML = (data.live ? `<option value="">Live</option>` : "") + `<option value="open">Before the open</option>` +
       data.hours.map(h => `<option value="${h}">After the ${h}:00 candle</option>`).join("");
     pick.value = at || (data.live ? "" : data.hour);  // a past day's latest candle is its last hour
+    pick.disabled = qs;
     const live = data.live && !at;
-    status.textContent = `${data.symbol} · ${data.date} · ${data.hour == null ? "before the open" : `after the ${data.hour}:00 candle`} · ${data.n} similar days` +
+    status.textContent = `${data.symbol} · ${data.date} · ${data.hour == null ? "before the open" : `after the ${data.hour}:00 candle`} · ` +
+      (qs ? `QuantiStat mode, raw points · ${data.n} days in ${data.period}` : `${data.n} similar days`) +
       (live ? ` · live, updated ${new Date().toLocaleTimeString("en-US")}` : "");
     draw(data);
     if (live) timer = setTimeout(visualize, REFRESH_MS);  // a new candle closes every hour

@@ -11,8 +11,8 @@ distances from the open out of earlier days only, and is scored against what hap
   1-point lines of the QuantiStat heatmap. hit_random is the same lines against another
   random day's HOD (LOD): if hit is no higher, the bright lines know nothing about the day.
 
-Methods: the sample (same day of month as the QuantiStat original, same weekday, or all
-days), raw points or rescaled to today's volatility (prior 5-day range r5), and the bias (bullish = closed above the open) either unknown
+Methods: the sample (same day of month, same weekday, or all days), raw points or rescaled
+to today's volatility (prior 5-day range r5), and the bias (bullish = closed above the open) either unknown
 or known: "bias known" peeks at the day's real close, the upper bound of picking the
 bias by hand. Every per-day row goes to scorecard.csv.
 
