@@ -107,7 +107,7 @@ function show(mod) {
   document.getElementById("go").onclick = visualize;
   document.getElementById("qs").onchange = e => {  // QuantiStat answers before the open only, over a Period window
     const pick = document.getElementById("at");
-    if (e.target.checked) pick.value = "open";  // not the old hour while the answer loads
+    pick.value = e.target.checked ? "open" : "";  // not the old hour while the answer loads; off: the latest candle
     pick.disabled = e.target.checked;
     document.getElementById("period-field").hidden = !e.target.checked;
     document.getElementById("desc").textContent = e.target.checked ? QUANTISTAT_DESC : MODULES.price[1];

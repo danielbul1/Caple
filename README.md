@@ -22,7 +22,7 @@ Open http://localhost:5000.
 
 - `GET /api/price-based?end=YYYY-MM-DD&at=open|0..23`: the Price Based heatmap (see below).
   `&mode=quantistat&period=3mo|6mo|1y|2y|ytd|max` (default 2y, before the open only) mimics
-  QuantiStat: raw points without the yardstick, every day in the Period window ending on the End Date
+  QuantiStat: raw points without expected-range scaling, every day in the Period window ending on the End Date
   (less the days both modes drop: no 00:00 candle, expiry weeks, contract-roll jumps).
 - `GET /api/available-dates`: dates with 729 days of candles before them.
 - `GET /api/candles?date=YYYY-MM-DD`: every 1h candle that closed before the date, 729 days back, as JSON.

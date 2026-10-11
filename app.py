@@ -141,7 +141,7 @@ def price_based():
     the H:00 candle, no at after the latest candle (live for today). Only candles up to that point
     are used, so nothing later can change the answer.
 
-    mode=quantistat mimics QuantiStat: raw points without the yardstick, every day in the Period
+    mode=quantistat mimics QuantiStat: raw points without expected-range scaling, every day in the Period
     window (3mo/6mo/1y/2y/ytd/max, default 2y) ending on the End Date, before the open only. It
     drops the same days as the default mode (daily_stats: no 00:00 candle, expiry weeks, roll jumps)."""
     from levels import MIN_DAYS, day_lines, today_yardstick, use_yardstick  # levels imports this module
@@ -152,7 +152,7 @@ def price_based():
     end = parse_date(raw_end)
     if (raw_end and end is None) or at not in (None, "open", *map(str, range(24))):
         return jsonify({"error": "Enter the End Date as YYYY-MM-DD and the time as open or an hour from 0 to 23."}), 400
-    if mode not in ("default", "quantistat") or period not in PERIODS:
+    if mode not in ("default", "quantistat") or (mode == "quantistat" and period not in PERIODS):
         return jsonify({"error": f"Pick mode default or quantistat, and a Period from {', '.join(PERIODS)}."}), 400
     if mode == "quantistat" and at != "open":
         return jsonify({"error": "QuantiStat mode only answers before the open."}), 400
@@ -178,7 +178,7 @@ def price_based():
         return jsonify({"error": f"{target} has no {hour}:00 candle. Pick an hour that has one, or before the open."}), 404
     known = candles[(days < target) | ((days == target) & (candles.index.hour <= (hour or 0)))]
     stats = daily_stats(known)
-    if mode == "quantistat":  # a yardstick of 1 point leaves every distance in raw points
+    if mode == "quantistat":  # a scale of 1 point leaves every distance in raw points
         stats = stats[[d >= period_start(end, period) for d in stats.index]].assign(r5=1.0)
         today_range = 1.0
     else:

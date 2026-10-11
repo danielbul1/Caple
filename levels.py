@@ -212,7 +212,9 @@ def day_lines(candles: pd.DataFrame, stats: pd.DataFrame, target: date, today_ra
     for hour in [None, *range(day.index[-1].hour + 1)]:  # hours without a candle (17:00 halt) carry on
         first = target - timedelta(days=lookback_days) if lookback_days else date.min
         history = stats[[first <= d < target for d in stats.index]]
-        ex, w, today_near = extras(history, hi, lo, hour), np.ones(len(history)), np.zeros(2)
+        ex = extras(history, hi, lo, hour).dropna()  # n counts only the days the forecast can use
+        history = history.loc[ex.index]
+        w, today_near = np.ones(len(history)), np.zeros(2)
         if hour is not None:
             where = position(hi, lo, close, hour)
             near = nearness(*(x[hour].reindex(history.index) for x in (hi, lo, close)), history.r5)

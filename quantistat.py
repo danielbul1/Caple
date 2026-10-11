@@ -1,4 +1,4 @@
-"""QuantiStat-style HOD/LOD statistics for ES, drawn with matplotlib.
+"""Same-weekday HOD/LOD statistics for ES in QuantiStat's chart layout, drawn with matplotlib.
 
 Takes LSE's ten years of hourly ES candles and looks only at past
 days on the same weekday as the target day (e.g. every Monday). This is not what QuantiStat

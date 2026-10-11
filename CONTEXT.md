@@ -56,6 +56,10 @@ _Avoid_: backtest, scorecard (כשמתכוונים לתצוגה למשתמש)
 מחיר שהמשתמש מזין, והסיכוי שה-HOD (או ה-LOD) יגיע אליו היום לפי המצב הנוכחי.
 _Avoid_: validate, אימות רמה
 
+**Period**:
+חלון הימים של מצב QuantiStat, נמדד אחורה מה-End Date.
+_Avoid_: lookback, טווח
+
 **מצב QuantiStat**:
 תצוגה שמחקה את QuantiStat: נקודות גולמיות בלי סרגל, כל הימים בחלון ה-Period שמסתיים ב-End Date. קיימת להשוואה בלבד.
 _Avoid_: מצב מקורי, raw mode

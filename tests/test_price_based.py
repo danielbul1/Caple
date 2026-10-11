@@ -122,3 +122,4 @@ def test_quantistat_mode_only_answers_before_the_open(monkeypatch):
     assert client.get(f"/api/price-based?end={END}&mode=quantistat").status_code == 400  # latest candle / live
     assert client.get(f"/api/price-based?end={END}&at=open&mode=quantistat&period=5y").status_code == 400
     assert client.get(f"/api/price-based?end={END}&at=open&mode=nope").status_code == 400
+    assert client.get(f"/api/price-based?end={END}&at=open&period=5y").status_code == 200  # no Period outside the mode

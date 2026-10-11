@@ -98,6 +98,8 @@ def test_day_lines_forecast_each_hour_from_earlier_days_only():
     assert out[2]["high"] == 101 and out[2]["low"] == 99
     # With a 1-day lookback only 11-10 (HOD +2 ranges) counts.
     assert levels.day_lines(c, stats, date(2026, 11, 11), 10.0, lookback_days=1)[0]["HOD"]["line"] == 120.0
+    # A day without a scale yet (r5 NaN) is not one of the days the forecast counts.
+    assert levels.day_lines(c, stats.assign(r5=[np.nan, 10.0, 10.0, 10.0]), date(2026, 11, 11), 10.0)[0]["n"] == 1
 
 
 def test_heat_counts_where_the_days_that_went_further_ended():
