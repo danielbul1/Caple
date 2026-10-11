@@ -139,12 +139,13 @@ def odds(extra: np.ndarray, now: float, sign: int, today_range: float,
             [now + sign * wquantile(extra[more], w[more], 1 - p) * today_range for p in REACH])
 
 
-def heat(extra: np.ndarray, now: float, sign: int, today_range: float, width: float = 2.0) -> list[tuple[float, int]]:
+def heat(extra: np.ndarray, now: float, sign: int, today_range: float, width: float = 1.0,
+         origin: float = 0.0) -> list[tuple[float, int]]:
     """Where the HOD (LOD) of each similar day that went further ended, in today's prices,
-    counted per `width`-point bin: the QuantiStat-style price heatmap."""
+    counted per `width`-point bin whole points from `origin` (the open): the price heatmap."""
     if np.isnan(today_range):
         return []
-    prices = np.round((now + sign * extra[extra > 1e-9] * today_range) / width) * width
+    prices = origin + np.round((now - origin + sign * extra[extra > 1e-9] * today_range) / width) * width
     return [(float(p), int(c)) for p, c in zip(*np.unique(prices, return_counts=True))]
 
 
@@ -155,7 +156,7 @@ def brightest(bins: list[tuple[float, int]], now: float, top: int = 3) -> list[t
 
 def plot_heat(f: dict, open_price: float, title: str):
     """QuantiStat-style "HOD/LOD Price Based" heatmap of one forecast row (see day_lines): points
-    from the 00:00 open, a line per 2-point bin where 2+ similar days ended and at least half as
+    from the 00:00 open, a line per 1-point bin where 2+ similar days ended and at least half as
     many as in that side's brightest bin (fewer would bury it), brighter and thicker = more days; dashed = the 75/50/25% levels; thin white = the open and the high/low so far."""
     import matplotlib.pyplot as plt
     from matplotlib.cm import ScalarMappable
@@ -184,7 +185,7 @@ def plot_heat(f: dict, open_price: float, title: str):
 
 
 def forecast(ex: pd.DataFrame, high_so_far: float, low_so_far: float, today_range: float,
-             w: np.ndarray | None = None, rw: tuple[float, float] | None = None) -> dict:
+             w: np.ndarray | None = None, rw: tuple[float, float] | None = None, origin: float = 0.0) -> dict:
     """Per side: done, levels, and line = the median final HOD/LOD over all similar days (the
     best single guess; it sits on the high/low so far once most similar days were done). rw =
     the random walk's "already in" for the HOD and the LOD, averaged into done."""
@@ -194,7 +195,7 @@ def forecast(ex: pd.DataFrame, high_so_far: float, low_so_far: float, today_rang
     return {side: dict(zip(["done", "levels"], odds(ex[col].to_numpy(), now, sign, today_range, w,
                                                     None if rw is None else rw[k])),
                        line=now + sign * wquantile(ex[col].to_numpy(), w, 0.5) * today_range,
-                       heat=heat(ex[col].to_numpy(), now, sign, today_range))
+                       heat=heat(ex[col].to_numpy(), now, sign, today_range, origin=origin))
             for side, col, now, sign, k in [("HOD", "up", high_so_far, 1, 0), ("LOD", "down", low_so_far, -1, 1)]}
 
 
@@ -219,7 +220,7 @@ def day_lines(candles: pd.DataFrame, stats: pd.DataFrame, target: date, today_ra
         low = day.Open.iloc[0] if hour is None else lo.loc[target, hour]
         out.append({"hour": hour, "high": high, "low": low, "n": int((w > 0).sum()),
                     **forecast(ex, high, low, today_range, w,
-                               None if hour is None else [rw_done(x, hour) for x in today_near])})
+                               None if hour is None else [rw_done(x, hour) for x in today_near], day.Open.iloc[0])})
     return out
 
 

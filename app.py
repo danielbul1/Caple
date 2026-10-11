@@ -1,4 +1,4 @@
-"""Small server that serves hourly ES candles from London Strategic Edge (LSE).
+"""Caple: a small server for the HOD/LOD page and hourly ES candles from London Strategic Edge (LSE).
 
 The user picks a date D. The response holds every 1h candle that closed before
 D (the last one is D-1 23:00 New York time) going back LOOKBACK_DAYS days. LSE's
@@ -7,7 +7,6 @@ history starts mid 2016, so any date with that much history before it can be pic
 
 from datetime import date, datetime, timedelta
 from io import StringIO
-from math import isnan
 from time import monotonic
 from zoneinfo import ZoneInfo
 
@@ -122,42 +121,53 @@ def candles():
     )
 
 
-@app.get("/api/lines")
-def lines():
-    """The HOD/LOD line of a day (default: the latest), as forecast before the open and after
-    each hourly candle so far; the page redraws it live."""
+@app.get("/api/price-based")
+def price_based():
+    """Price Based heatmap of the first day after the End Date (default: the latest day): where
+    the HOD (above 0) and LOD (below 0) of similar earlier days ended, in 1-point cells counted
+    from the 00:00 open, cells with a single day left out. at=open is before the open, at=H after
+    the H:00 candle, no at after the latest candle (live for today). Only candles up to that point
+    are used, so nothing later can change the answer."""
     from levels import day_lines, today_yardstick, use_yardstick  # levels imports this module
     from quantistat import daily_stats
 
+    raw_end, at = request.args.get("end"), request.args.get("at")
+    end = parse_date(raw_end)
+    if (raw_end and end is None) or at not in (None, "open", *map(str, range(24))):
+        return jsonify({"error": "Pass end=YYYY-MM-DD and at=open or at=0..23"}), 400
     try:
         candles = live_candles()
     except Exception as exc:  # network errors, LSE refusals
         return jsonify({"error": str(exc)}), 502
-    target = parse_date(request.args.get("date")) or candles.index[-1].date()
-    day = candles[candles.index.date == target]
-    if len(day) == 0 or day.index[0].hour != 0:
-        return jsonify({"error": f"No 00:00 candle for {target}"}), 404
-    stats = daily_stats(candles)
+    days = candles.index.date
+    opens = days[candles.index.hour == 0]
+    later = opens if end is None else opens[opens > end]
+    if len(later) == 0:
+        return jsonify({"error": f"No day with a 00:00 candle after {end}"}), 404
+    target = later.max() if end is None else later.min()
+    hours = sorted(set(candles.index.hour[days == target]))
+    hour = None if at == "open" else hours[-1] if at is None else int(at)
+    if hour is not None and hour not in hours:
+        return jsonify({"error": f"No {hour}:00 candle on {target}"}), 404
+    known = candles[(days < target) | ((days == target) & (candles.index.hour <= (hour or 0)))]
+    stats = daily_stats(known)
     use_yardstick(stats)
-    rows = day_lines(candles, stats, target, today_yardstick(stats, target))
-    num = lambda x: None if isnan(x) else round(float(x), 2)
+    rows = day_lines(known, stats, target, today_yardstick(stats, target))
+    row, open_ = rows[0] if hour is None else rows[-1], float(known.Open[known.index.date == target].iloc[0])
     return jsonify(
         {
+            "symbol": SYMBOL,
             "date": target.isoformat(),
+            "end": max(d for d in days if d < target).isoformat(),
             "live": target == today_market(),
-            "yardstick": "HAR",
-            "candles": [
-                {"hour": ts.hour, "open": float(r.Open), "high": float(r.High), "low": float(r.Low), "close": float(r.Close)}
-                for ts, r in day.iterrows()
-            ],
-            "lines": [
-                {"hour": None if r["hour"] is None else int(r["hour"]), "n": r["n"],
-                 "high": float(r["high"]), "low": float(r["low"]),
-                 **{f"{side.lower()}_done": num(r[side]["done"]) for side in ("HOD", "LOD")},
-                 **{f"{side.lower()}_heat": r[side]["heat"] for side in ("HOD", "LOD")},
-                 **{f"{side.lower()}_levels": [num(x) for x in r[side]["levels"]] for side in ("HOD", "LOD")}}
-                for r in rows
-            ],
+            "hours": [int(h) for h in hours],
+            "hour": hour,
+            "open": open_,
+            "high": float(row["high"]),
+            "low": float(row["low"]),
+            "n": row["n"],
+            "cells": [{"side": side, "points": round(p - open_), "days": c}
+                      for side in ("HOD", "LOD") for p, c in row[side]["heat"] if c >= 2],
         }
     )
 

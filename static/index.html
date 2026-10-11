@@ -1,235 +1,157 @@
 <!doctype html>
-<html lang="he" dir="rtl">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ES נרות שעה</title>
+<title>Caple</title>
 <style>
-  :root { --fg:#1d1d1f; --muted:#c4c4c8; --line:#e5e5ea; --accent:#2563eb; --bg:#fff; }
+  :root { --bg:#000; --panel:#0e0e10; --card:#16161a; --line:#2a2a30; --fg:#f2f2f7; --muted:#8e8e93; --accent:#7c5cff; --accent2:#22d3ee; }
   * { box-sizing: border-box; }
   body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color:var(--fg); background:var(--bg); }
-  main { max-width: 900px; margin: 0 auto; padding: 24px 16px; }
-  h1 { font-size: 22px; margin: 0 0 4px; }
-  .sub { color:#6e6e73; margin: 0 0 20px; font-size: 14px; }
-  .cal { width: 300px; border:1px solid var(--line); border-radius: 12px; padding: 12px; direction: ltr; }
-  .cal-head { display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px; }
-  .cal-head button { border:0; background:none; font-size:18px; cursor:pointer; padding:4px 10px; }
-  .cal-title { font-weight:600; }
-  .grid { display:grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align:center; }
-  .dow { font-size: 12px; color:#6e6e73; padding: 4px 0; }
-  .day { height: 36px; border-radius: 50%; border:1px solid transparent; background:none; font-size:14px; color:var(--muted); cursor:default; }
-  .day.on { color:var(--fg); cursor:pointer; }
-  .day.on:hover { background:#f2f2f7; }
-  .day.today { border-color: var(--fg); }
-  .day.sel, .day.sel:hover { background: var(--accent); color:#fff; border-color: var(--accent); }
-  .status { margin: 16px 0; font-size: 14px; }
-  .summary { display:flex; flex-wrap:wrap; gap: 8px 24px; font-size:14px; margin-bottom: 12px; }
-  .summary b { font-variant-numeric: tabular-nums; }
-  a.btn { display:inline-block; padding:8px 14px; background:var(--accent); color:#fff; border-radius:8px; text-decoration:none; font-size:14px; }
-  .table-wrap { max-height: 60vh; overflow:auto; border:1px solid var(--line); border-radius: 8px; margin-top: 12px; direction: ltr; }
-  table { border-collapse: collapse; width:100%; font-size: 13px; font-variant-numeric: tabular-nums; }
-  th, td { padding: 6px 10px; text-align:right; border-bottom: 1px solid var(--line); white-space: nowrap; }
-  th:first-child, td:first-child { text-align:left; }
-  th { position: sticky; top: 0; background: #f9f9fb; }
-  .err { color: #c0392b; }
-  section.lines { margin-bottom: 32px; }
-  .lines-head { display:flex; flex-wrap:wrap; align-items:center; gap: 8px 16px; margin-bottom: 8px; font-size:14px; }
-  .now { display:flex; flex-wrap:wrap; gap: 8px 32px; font-size:14px; margin: 8px 0; }
-  .now b { font-size: 20px; font-variant-numeric: tabular-nums; }
-  .note { color:#6e6e73; font-size: 13px; }
-  .chart { position: relative; direction: ltr; }
-  .chart svg { width: 100%; height: auto; display:block; }
-  .chart text { font-size: 11px; fill: #aeaeb2; font-variant-numeric: tabular-nums; }
+  .app { display:flex; min-height:100vh; }
+  aside { width:240px; flex:none; background:var(--panel); border-right:1px solid var(--line); padding:20px 14px; }
+  .logo { font-size:22px; font-weight:800; letter-spacing:.5px; margin:0 6px 24px; display:flex; align-items:center; gap:8px; }
+  .logo i { width:22px; height:22px; border-radius:6px; background:linear-gradient(135deg,var(--accent),var(--accent2)); }
+  .group { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); margin:18px 6px 8px; }
+  .tile { display:block; width:100%; text-align:left; padding:10px 12px; margin-bottom:6px; border-radius:10px; border:1px solid var(--line);
+          background:var(--card); color:var(--fg); font-size:14px; cursor:pointer; }
+  .tile:hover { border-color:#3a3a42; }
+  .tile.sel { border-color:var(--accent); background:linear-gradient(135deg,#7c5cff33,#22d3ee1a); }
+  main { flex:1; min-width:0; padding:28px 28px 40px; }
+  h1 { font-size:30px; margin:0 0 6px; background:linear-gradient(90deg,var(--accent),var(--accent2)); -webkit-background-clip:text; background-clip:text; color:transparent; display:inline-block; }
+  .desc { color:var(--muted); font-size:14px; margin:0 0 18px; max-width:760px; }
+  .form { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; display:flex; flex-wrap:wrap; gap:14px 18px; align-items:flex-end; max-width:860px; }
+  label { display:flex; flex-direction:column; gap:6px; font-size:12px; color:var(--muted); }
+  input, select { background:#0b0b0d; color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:14px; color-scheme:dark; }
+  input:disabled { color:var(--muted); width:70px; }
+  button.go { padding:10px 22px; border:0; border-radius:10px; font-weight:700; font-size:14px; color:#fff; cursor:pointer;
+              background:linear-gradient(90deg,var(--accent),var(--accent2)); }
+  .status { margin:16px 0 8px; font-size:13px; color:var(--muted); min-height:18px; }
+  .err { color:#ff6b6b; }
+  .soon { margin-top:24px; color:var(--muted); font-size:15px; }
+  .chart { position:relative; max-width:960px; }
+  .chart svg { width:100%; height:auto; display:block; }
+  .chart text { font-size:11px; fill:#aeaeb2; font-variant-numeric:tabular-nums; }
+  .tip { position:absolute; pointer-events:none; background:#000c; border:1px solid var(--line); border-radius:6px; padding:3px 7px; font-size:12px; display:none; font-variant-numeric:tabular-nums; }
+  @media (max-width:720px) { .app { flex-direction:column; } aside { width:auto; border-right:0; border-bottom:1px solid var(--line); } main { padding:20px 16px; } }
 </style>
 </head>
 <body>
-<main>
-  <section class="lines">
-    <h1>ES · מפת רמות HOD/LOD</h1>
-    <p class="sub">ריחוף מעל קו מראה את המחיר ומספר הימים. כל קו אופקי הוא מרחק בנקודות מהפתיחה (00:00) שבו הסתיים ה-HOD (מעל 0) או ה-LOD (מתחת ל-0) בימים דומים שהמשיכו מעבר לשיא/שפל של אותה שעה, מותאם לתנודתיות של היום. בהיר ועבה יותר = יותר ימים הסתיימו שם. הקו המקווקו הלבן הוא השיא/שפל עד עכשיו, עם הסיכוי שהוא כבר הסופי. הקווים האדומים הם הרמות: אם השיא/שפל ממשיך, הוא מגיע אליהן ב-75%, 50% ו-25% מהימים (נבדק על 10 שנים: מכויל). מחושב מחדש בפתיחה ואחרי כל נר שעה.</p>
-    <div class="lines-head">
-      <label>תאריך: <input type="date" id="lines-date"></label>
-      <label>מצב: <select id="lines-hour"></select></label>
-      <span class="note" id="lines-status"></span>
-    </div>
-    <div class="now" id="lines-now"></div>
-    <div class="chart" id="lines-chart"></div>
-  </section>
-
-  <h1>ES · נרות שעה</h1>
-  <p class="sub">בחר תאריך ותקבל את כל נרות השעה שנסגרו לפניו, שנתיים אחורה. הנתונים מ-LSE (מאמצע 2016), כל תאריך עם שנתיים היסטוריה לפניו פתוח לבחירה.</p>
-
-  <div class="cal">
-    <div class="cal-head">
-      <button id="prev" aria-label="previous month">‹</button>
-      <span class="cal-title" id="title"></span>
-      <button id="next" aria-label="next month">›</button>
-    </div>
-    <div class="grid" id="grid"></div>
-  </div>
-
-  <div class="status" id="status">טוען תאריכים זמינים…</div>
-  <div id="result"></div>
-</main>
+<div class="app">
+  <aside>
+    <div class="logo"><i></i>Caple</div>
+    <div class="group">HOD/LOD</div>
+    <button class="tile" data-mod="price">Price Based</button>
+    <button class="tile" data-mod="time">Time Based</button>
+    <button class="tile" data-mod="validator">Level Validator</button>
+    <div class="group">Bias</div>
+    <button class="tile" data-mod="seasonal">Seasonal</button>
+    <button class="tile" data-mod="intraday">Intraday</button>
+  </aside>
+  <main>
+    <h1 id="title"></h1>
+    <p class="desc" id="desc"></p>
+    <div id="body"></div>
+  </main>
+</div>
 
 <script>
-const DOW = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-let available = new Set(), today = null, view = null, selected = null;
-
-const iso = (y, m, d) => `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-const fmt = n => n == null ? "–" : n.toLocaleString("en-US", { maximumFractionDigits: 2 });
-
-function render() {
-  const [y, m] = view;
-  document.getElementById("title").textContent = `${MONTHS[m]} ${y}`;
-  const grid = document.getElementById("grid");
-  grid.innerHTML = DOW.map(d => `<div class="dow">${d}</div>`).join("");
-  const first = new Date(y, m, 1).getDay();
-  const days = new Date(y, m + 1, 0).getDate();
-  for (let i = 0; i < first; i++) grid.insertAdjacentHTML("beforeend", "<div></div>");
-  for (let d = 1; d <= days; d++) {
-    const key = iso(y, m, d);
-    const btn = document.createElement("button");
-    btn.className = "day";
-    btn.textContent = d;
-    if (available.has(key)) { btn.classList.add("on"); btn.onclick = () => pick(key); }
-    else btn.disabled = true;
-    if (key === today) btn.classList.add("today");
-    if (key === selected) btn.classList.add("sel");
-    grid.appendChild(btn);
-  }
-}
-
-function shift(delta) {
-  let [y, m] = view; m += delta;
-  if (m < 0) { m = 11; y--; } if (m > 11) { m = 0; y++; }
-  view = [y, m]; render();
-}
-
-async function pick(key) {
-  selected = key; render();
-  const status = document.getElementById("status"), result = document.getElementById("result");
-  status.textContent = `מושך נתונים עבור ${key}…`;
-  result.innerHTML = "";
-  try {
-    const res = await fetch(`/api/candles?date=${key}`);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || res.statusText);
-    status.textContent = "";
-    const rows = data.candles.slice().reverse().map(c =>
-      `<tr><td>${c.time}</td><td>${fmt(c.open)}</td><td>${fmt(c.high)}</td><td>${fmt(c.low)}</td><td>${fmt(c.close)}</td><td>${c.volume.toLocaleString("en-US")}</td></tr>`
-    ).join("");
-    result.innerHTML = `
-      <div class="summary">
-        <span>תאריך נבחר: <b>${data.date}</b></span>
-        <span>נר ראשון: <b>${data.first}</b></span>
-        <span>נר אחרון: <b>${data.last}</b></span>
-        <span>מספר נרות: <b>${data.count.toLocaleString("en-US")}</b></span>
-      </div>
-      <a class="btn" href="/api/candles?date=${key}&format=csv">הורד CSV</a>
-      <div class="table-wrap"><table>
-        <thead><tr><th>Time (NY)</th><th>Open</th><th>High</th><th>Low</th><th>Close</th><th>Volume</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table></div>`;
-  } catch (e) {
-    status.innerHTML = `<span class="err">שגיאה: ${e.message}</span>`;
-  }
-}
-
-async function init() {
-  document.getElementById("prev").onclick = () => shift(-1);
-  document.getElementById("next").onclick = () => shift(1);
-  const status = document.getElementById("status");
-  try {
-    const data = await (await fetch("/api/available-dates")).json();
-    available = new Set(data.available);
-    today = data.today;
-    const [y, m] = today.split("-").map(Number);
-    view = [y, m - 1];
-    status.textContent = available.size ? "בחר תאריך מסומן." : "אין כרגע תאריך עם שנתיים מלאות.";
-  } catch (e) {
-    const now = new Date(); view = [now.getFullYear(), now.getMonth()];
-    status.innerHTML = `<span class="err">לא הצלחתי לטעון תאריכים: ${e.message}</span>`;
-  }
-  render();
-}
-init();
-
+const MODULES = {
+  price: ["HOD/LOD Price Based", "Where the high (above 0) and low (below 0) of similar past days ended, in points from the 00:00 open. Each day is measured in its own yardstick and converted to today's points. Brighter and thicker = more days ended there; cells with a single day are hidden."],
+  time: ["HOD/LOD Time Based", "At what hour the high and low of the day are usually set."],
+  validator: ["Level Validator", "The record of levels set in advance, and the chance a price you type gets reached."],
+  seasonal: ["Seasonal Bias", "The average path of the month and how often its bias call was right."],
+  intraday: ["Intraday Bias", "The chance the day closes above the 00:00 open, after each candle."],
+};
 const VIRIDIS = ["#440154", "#3b528b", "#21918c", "#5ec962", "#fde725"];
-let linesTimer = null, followLatest = true, pickedHour;  // until a date is picked, follow the latest day
-const REACH = ["75%", "50%", "25%"], LEVEL_COLOR = "#ff375f";  // levels reached on 75/50/25% of the days that went further
-const pct = p => p == null ? "–" : `${Math.round(p * 100)}%`;
-const hourName = h => h == null ? "לפני הפתיחה" : `אחרי נר ${h}:00`;
 const viridis = t => VIRIDIS[Math.min(VIRIDIS.length - 1, Math.round(t * (VIRIDIS.length - 1)))];
+const fmt = n => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+let timer = null;
 
-async function loadLines() {
-  const status = document.getElementById("lines-status"), input = document.getElementById("lines-date");
-  clearTimeout(linesTimer);
+function show(mod) {
+  clearTimeout(timer);
+  document.querySelectorAll(".tile").forEach(t => t.classList.toggle("sel", t.dataset.mod === mod));
+  [document.getElementById("title").textContent, document.getElementById("desc").textContent] = MODULES[mod];
+  const body = document.getElementById("body");
+  if (mod !== "price") { body.innerHTML = `<div class="soon">Coming soon.</div>`; return; }
+  const hours = Array.from({ length: 24 }, (_, h) => `<option value="${h}">After the ${h}:00 candle</option>`).join("");
+  body.innerHTML = `
+    <div class="form">
+      <label>Symbol<input value="ES" disabled></label>
+      <label>End Date<input type="date" id="end"></label>
+      <label>Time<select id="at"><option value="">Latest candle (live today)</option><option value="open">Before the open</option>${hours}</select></label>
+      <button class="go" id="go">Visualize</button>
+    </div>
+    <div class="status" id="status"></div>
+    <div class="chart" id="chart"></div>`;
+  document.getElementById("go").onclick = visualize;
+  visualize();
+}
+
+async function visualize() {
+  clearTimeout(timer);
+  const end = document.getElementById("end"), at = document.getElementById("at").value, status = document.getElementById("status");
+  status.textContent = "Loading…";
   try {
-    const res = await fetch(`/api/lines${followLatest ? "" : `?date=${input.value}`}`);
+    const q = new URLSearchParams({ ...(end.value && { end: end.value }), ...(at && { at }) });
+    const res = await fetch(`/api/price-based?${q}`);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || res.statusText);
-    input.value = data.date;
-    status.textContent = data.live ? `חי · מתעדכן כל דקה · עודכן ${new Date().toLocaleTimeString("he-IL")}` : "יום שהסתיים";
-    const sel = document.getElementById("lines-hour");
-    sel.innerHTML = data.lines.map((l, i) => `<option value="${i}">${hourName(l.hour)}</option>`).join("");
-    const keep = data.lines.findIndex(l => l.hour === pickedHour);
-    sel.value = pickedHour === undefined || keep < 0 ? data.lines.length - 1 : keep;  // default: the latest
-    sel.onchange = () => { pickedHour = data.lines[sel.value].hour; drawLines(data, +sel.value); };
-    drawLines(data, +sel.value);
+    end.value = data.end;
+    const live = data.live && !at;
+    status.textContent = `${data.symbol} · ${data.date} · ${data.hour == null ? "before the open" : `after the ${data.hour}:00 candle`} · ${data.n} similar days` +
+      (live ? ` · live, updated ${new Date().toLocaleTimeString("en-US")}` : "");
+    draw(data);
+    if (live) timer = setTimeout(visualize, 60000);  // a new candle closes every hour
   } catch (e) {
     status.innerHTML = `<span class="err">${e.message}</span>`;
   }
-  if (followLatest) linesTimer = setTimeout(loadLines, 60000);  // also retries after an error
 }
 
-function drawLines(data, i) {
-  const row = data.lines[i], open = data.candles[0].open;
-  document.getElementById("lines-now").innerHTML = [["HOD", "השיא", row.high, row.hod_done], ["LOD", "השפל", row.low, row.lod_done]]
-    .map(([name, word, sofar, done]) => `<span>${name}: ${word} עד עכשיו <b>${fmt(sofar)}</b> · כבר נקבע ב-${pct(done)} מ-${row.n} ימים דומים</span>`).join("") +
-    [["HOD", row.hod_levels], ["LOD", row.lod_levels]].map(([name, lv]) =>
-      `<span>${name} אם ממשיך: ${lv.map((p, k) => `<b style="font-size:16px">${fmt(p)}</b> (${REACH[k]})`).join(" · ")}</span>`).join("");
-
-  // QuantiStat "Price Based" look: points from the 00:00 open, HOD above 0, LOD below.
-  // Like the original, levels hit on a single day are left out as noise.
-  const heat = row.hod_heat.concat(row.lod_heat).filter(([, c]) => c >= 2).map(([p, c]) => [p - open, c, p]);
-  const counts = heat.map(([, c]) => c), least = Math.min(...counts), most = Math.max(...counts);
-  const W = 860, H = 460, L = 56, R = 110, T = 36, B = 40;
-  const reach = [...row.hod_levels.map((p, k) => [p, k, "HOD"]), ...row.lod_levels.map((p, k) => [p, k, "LOD"])].filter(([p]) => p != null);
-  const pts = heat.map(([d]) => d).concat(row.high - open, row.low - open, reach.map(([p]) => p - open)), lo = Math.min(...pts), hi = Math.max(...pts), pad = (hi - lo) * 0.05;
-  const y = d => T + (H - T - B) * (hi + pad - d) / (hi - lo + 2 * pad);
-  const step = [5, 10, 20, 25, 50, 100].find(s => (hi - lo) / s <= 8);
-  const ticks = [];
-  for (let d = Math.ceil((lo - pad) / step) * step; d <= hi + pad; d += step) ticks.push(d);
-  const grid = ticks.map(d => `<line x1="${L}" x2="${W - R}" y1="${y(d)}" y2="${y(d)}" stroke="#2c2c2e"/>
-    <text x="${L - 8}" y="${y(d) + 4}" text-anchor="end">${d}</text>`).join("");
-  const xs = [0, 0.2, 0.4, 0.6, 0.8, 1].map(f => `<line x1="${L + (W - L - R) * f}" x2="${L + (W - L - R) * f}" y1="${T}" y2="${H - B}" stroke="#2c2c2e"/>
-    <text x="${L + (W - L - R) * f}" y="${H - B + 18}" text-anchor="middle">${f.toFixed(1)}</text>`).join("");
+function draw(data) {
+  const W = 860, H = 480, L = 56, R = 110, T = 20, B = 24;
+  const during = data.hour != null, high = data.high - data.open, low = data.low - data.open;
+  const pts = data.cells.map(c => c.points).concat(0, high, low), lo = Math.min(...pts) - 2, hi = Math.max(...pts) + 2;
+  const y = d => T + (H - T - B) * (hi - d) / (hi - lo);
+  const days = data.cells.map(c => c.days), least = Math.min(2, ...days), most = Math.max(2, ...days);
   const t = c => most === least ? 1 : (c - least) / (most - least);
-  // Dim bins first so the bright ones are drawn on top; thicker = more days.
-  const levels = heat.slice().sort((a, b) => a[1] - b[1]).map(([d, c, p]) =>
-    `<line x1="${L}" x2="${W - R}" y1="${y(d)}" y2="${y(d)}" stroke="${viridis(t(c))}" stroke-width="${1.5 + 1.5 * t(c)}">
-      <title>${d > 0 ? "+" : ""}${d.toFixed(2)} points (${fmt(p)}): ${c} days</title></line>`).join("");
+  const step = [5, 10, 20, 25, 50, 100, 200].find(s => (hi - lo) / s <= 10);
+  const ticks = [];
+  for (let d = Math.ceil(lo / step) * step; d <= hi; d += step) ticks.push(d);
+  const grid = ticks.map(d => `<line x1="${L}" x2="${W - R}" y1="${y(d)}" y2="${y(d)}" stroke="#222"/>
+    <text x="${L - 8}" y="${y(d) + 4}" text-anchor="end">${d}</text>`).join("");
+  // Dim cells first so bright ones sit on top; each cell is one point tall at most, thicker = more days.
+  const cell = (H - T - B) / (hi - lo);
+  const cells = data.cells.slice().sort((a, b) => a.days - b.days).map(c =>
+    `<line x1="${L}" x2="${W - R}" y1="${y(c.points)}" y2="${y(c.points)}" stroke="${viridis(t(c.days))}" stroke-width="${Math.min(cell, 1 + 3 * t(c.days))}"/>`).join("");
+  const mark = (d, label, dash) => `<line x1="${L}" x2="${W - R}" y1="${y(d)}" y2="${y(d)}" stroke="#f2f2f7" stroke-width="1" ${dash ? 'stroke-dasharray="6 4"' : ""}/>
+    <text x="${L + 6}" y="${y(d) - 5}" style="fill:#f2f2f7">${label}</text>`;
+  const marks = during ? mark(0, `open ${fmt(data.open)}`) + mark(high, `high so far ${fmt(data.high)}`, true) + mark(low, `low so far ${fmt(data.low)}`, true) : "";
   const barH = (H - T - B) / VIRIDIS.length;
   const bar = VIRIDIS.map((col, k) => `<rect x="${W - R + 24}" y="${T + barH * (VIRIDIS.length - 1 - k)}" width="14" height="${barH}" fill="${col}"/>`).join("") +
     `<text x="${W - R + 44}" y="${T + 10}">${most}</text><text x="${W - R + 44}" y="${H - B}">${least}</text>
-     <text transform="translate(${W - R + 80},${(T + H - B) / 2}) rotate(90)" text-anchor="middle">heatmap (days)</text>`;
-  document.getElementById("lines-chart").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="HOD/LOD price based heatmap">
-    <rect width="${W}" height="${H}" fill="#141414" rx="8"/>
-    <text x="${(L + W - R) / 2}" y="22" text-anchor="middle" style="fill:#f2f2f7;font-size:14px">HOD/LOD Price Based · ${row.hour == null ? "before the open" : `after ${row.hour}:00`}</text>
-    ${grid}${xs}<rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="none" stroke="#8e8e93"/>${levels}
-    ${[[row.high, row.hod_done, "HOD"], [row.low, row.lod_done, "LOD"]].map(([p, done, name]) =>
-      `<line x1="${L}" x2="${W - R}" y1="${y(p - open)}" y2="${y(p - open)}" stroke="#f2f2f7" stroke-dasharray="6 4"/>
-       <text x="${L + 6}" y="${y(p - open) + (name === "HOD" ? -6 : 14)}" style="fill:#f2f2f7">${name} so far ${fmt(p)} · already in: ${pct(done)}</text>`).join("")}
-    ${reach.map(([p, k, name]) =>
-      `<line x1="${L}" x2="${W - R}" y1="${y(p - open)}" y2="${y(p - open)}" stroke="${LEVEL_COLOR}" stroke-width="1.5"/>
-       <text x="${W - R - 6}" y="${y(p - open) - 4}" text-anchor="end" style="fill:${LEVEL_COLOR};paint-order:stroke;stroke:#141414;stroke-width:4px">${name} ${REACH[k]} ${fmt(p)}</text>`).join("")}
-    <text transform="translate(14,${(T + H - B) / 2}) rotate(-90)" text-anchor="middle">points</text>${bar}</svg>`;
+     <text transform="translate(${W - R + 80},${(T + H - B) / 2}) rotate(90)" text-anchor="middle">days</text>`;
+  const chart = document.getElementById("chart");
+  chart.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="HOD/LOD price based heatmap">
+    <rect width="${W}" height="${H}" fill="#0b0b0d" rx="10"/>${grid}
+    <rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="none" stroke="#3a3a42"/>${cells}${marks}
+    <text transform="translate(14,${(T + H - B) / 2}) rotate(-90)" text-anchor="middle">points from the 00:00 open</text>${bar}
+    <rect id="hover" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/></svg><div class="tip" id="tip"></div>`;
+  const svg = chart.querySelector("svg"), tip = document.getElementById("tip");
+  const hover = document.getElementById("hover");
+  hover.onmousemove = e => {
+    const box = svg.getBoundingClientRect(), sy = (e.clientY - box.top) * H / box.height;
+    const d = Math.round(hi - (sy - T) * (hi - lo) / (H - T - B));
+    tip.textContent = `${d > 0 ? "+" : ""}${d} points`;
+    tip.style.display = "block";
+    tip.style.left = `${e.clientX - box.left + 12}px`;
+    tip.style.top = `${e.clientY - box.top - 10}px`;
+  };
+  hover.onmouseleave = () => { tip.style.display = "none"; };
 }
 
-document.getElementById("lines-date").onchange = () => { followLatest = false; loadLines(); };
-loadLines();
+document.querySelectorAll(".tile").forEach(t => t.onclick = () => show(t.dataset.mod));
+show("price");
 </script>
 </body>
 </html>
