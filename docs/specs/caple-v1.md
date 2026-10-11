@@ -14,7 +14,7 @@
 
 שלושה מצבי זמן: לפני הפתיחה, בורר שעה לכל יום בעבר ("אחרי נר 9:00"), ומצב חי להיום שמתעדכן אחרי כל נר.
 
-ב-Price Based וב-Time Based יש מתג **מצב QuantiStat** בתוך המסך. הוא מחליף את המנוע במחקה של השיטה שלהם, כדי שאפשר יהיה להשוות על אותו יום. ההבדל היחיד בין המצבים הוא הסרגל וחלון ה-Period, ולכן כל הבדל במפה מראה מה הסרגל שווה.
+ב-Price Based יש שדה Mode בטופס (לצד Symbol, End Date ו-Time) עם **מצב QuantiStat**, וב-Time Based יש מתג **מצב QuantiStat** בתוך המסך. הוא מחליף את המנוע במחקה של השיטה שלהם, כדי שאפשר יהיה להשוות על אותו יום. ההבדל היחיד בין המצבים הוא הסרגל וחלון ה-Period, ולכן כל הבדל במפה מראה מה הסרגל שווה.
 
 ## User Stories
 
@@ -56,11 +56,11 @@
 28. As a trader, I want the default mode to use all the history up to the End Date, so that the map rests on as many days as possible.
 29. As a trader, I want, after an hourly candle, the heatmap to show where similar days that went past the high/low so far ended, so that the map updates with what the day has already done.
 30. As a trader, I want the high/low so far and the open marked on the map during the day, so that I can see where the day stands.
-31. As a trader, I want a QuantiStat mode toggle inside the Price Based screen, so that I can compare the two methods on the same day.
+31. As a trader, I want a Mode field (Default / QuantiStat) next to Symbol, End Date and Time in the Price Based form, so that I can compare the two methods on the same day.
 32. As a trader, I want QuantiStat mode to use raw points with no yardstick, so that the map looks like theirs.
 33. As a trader, I want QuantiStat mode to show the Period field (3mo/6mo/1y/2y/ytd/max) with 2y as default, so that I can reproduce their settings.
 34. As a trader, I want the Period window measured back from the End Date, not from today, so that the same input always gives the same map.
-35. As a trader, I want the Period field hidden when QuantiStat mode is off, so that I'm not tempted to pick a window that makes the forecast worse.
+35. As a trader, I want the Period field always in the Price Based form but usable only in QuantiStat mode, so that I'm not tempted to pick a window that makes the forecast worse.
 36. As a trader, I want both modes to use 00:00 New York as the day boundary and 1-point cells, so that the only difference I see is the yardstick and the window.
 
 ### Time Based
