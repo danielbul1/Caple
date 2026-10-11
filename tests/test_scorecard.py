@@ -6,7 +6,7 @@ import pandas as pd
 import scorecard as sc
 
 
-def test_bright_lines_are_the_most_crowded_1_point_bins():
+def test_bright_lines_are_the_most_crowded_1_point_cells():
     assert sc.bright_lines(np.array([5.2, 4.9, 5.1, 10.0, 10.2, 20.0, 30.0]), top=2).tolist() == [5.0, 10.0]
 
 

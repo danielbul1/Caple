@@ -1,3 +1,4 @@
+import re
 from datetime import date, timedelta
 
 import pandas as pd
@@ -21,3 +22,11 @@ def test_candles_serve_the_lookback_before_the_picked_date_from_lse(monkeypatch)
     data = client.get("/api/candles?date=2018-06-05").get_json()
     assert data["first"] == "2016-06-06 00:00" and data["last"] == "2018-06-04 23:00"
     assert client.get("/api/candles?date=2016-07-01").status_code == 422  # not enough history before it
+
+
+def test_the_page_is_caple_with_its_tiles_and_no_candles():
+    page = app.app.test_client().get("/").get_data(as_text=True)
+    assert "Caple" in page
+    tiles = re.findall(r'class="tile"[^>]*>([^<]+)<', page)
+    assert tiles == ["Price Based", "Time Based", "Level Validator", "Seasonal", "Intraday"]
+    assert "/api/candles" not in page and "/api/available-dates" not in page  # the endpoints stay, the page drops them

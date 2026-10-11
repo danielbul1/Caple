@@ -45,6 +45,7 @@ QUANTILES = [0.25, 0.5, 0.75]
 # FOMC/CPI days only (better on 2022+, worse on 2017-2021), so events only get a warning.
 EVENT_SIZE = {"FOMC": 1.3, "CPI": 1.2}
 K_NEAREST = 150  # 300 was worse on 2018-2021 from 9:00 on
+MIN_DAYS = 2  # heatmap cells where fewer similar days ended are hidden: one day is noise
 # Log-scale weights of yesterday's, the 5-day and the 22-day average Parkinson volatility in the
 # yardstick (HAR, Corsi 2009), fit on 2016-2021 by regressing the log of each day's range on them;
 # HAR_SCALE (e^intercept) only makes it read as a typical day's range in points.
@@ -139,34 +140,37 @@ def odds(extra: np.ndarray, now: float, sign: int, today_range: float,
             [now + sign * wquantile(extra[more], w[more], 1 - p) * today_range for p in REACH])
 
 
-def heat(extra: np.ndarray, now: float, sign: int, today_range: float, width: float = 2.0) -> list[tuple[float, int]]:
-    """Where the HOD (LOD) of each similar day that went further ended, in today's prices,
-    counted per `width`-point bin: the QuantiStat-style price heatmap."""
+def heat(extra: np.ndarray, now: float, sign: int, today_range: float,
+         origin: float) -> list[tuple[float, int]]:
+    """The price heatmap: how many similar days that went further had their HOD (LOD) in each
+    1-point cell, in today's prices. Cells sit a whole number of points from `origin` (the open);
+    a HOD (LOD) that rounds onto the open counts in the cell 1 point above (below) it."""
     if np.isnan(today_range):
         return []
-    prices = np.round((now + sign * extra[extra > 1e-9] * today_range) / width) * width
+    points = np.round(now - origin + sign * extra[extra > 1e-9] * today_range)
+    prices = origin + np.where(points == 0, sign, points)
     return [(float(p), int(c)) for p, c in zip(*np.unique(prices, return_counts=True))]
 
 
-def brightest(bins: list[tuple[float, int]], now: float, top: int = 3) -> list[tuple[float, int]]:
-    """The `top` heatmap bins where the most similar days ended (nearest to price first on a tie)."""
-    return sorted(sorted(bins, key=lambda b: (-b[1], abs(b[0] - now)))[:top], key=lambda b: b[0])
+def brightest(cells: list[tuple[float, int]], now: float, top: int = 3) -> list[tuple[float, int]]:
+    """The `top` heatmap cells where the most similar days ended (nearest to price first on a tie)."""
+    return sorted(sorted(cells, key=lambda c: (-c[1], abs(c[0] - now)))[:top], key=lambda c: c[0])
 
 
 def plot_heat(f: dict, open_price: float, title: str):
     """QuantiStat-style "HOD/LOD Price Based" heatmap of one forecast row (see day_lines): points
-    from the 00:00 open, a line per 2-point bin where 2+ similar days ended and at least half as
-    many as in that side's brightest bin (fewer would bury it), brighter and thicker = more days; dashed = the 75/50/25% levels; thin white = the open and the high/low so far."""
+    from the 00:00 open, a line per 1-point cell where 2+ (MIN_DAYS) similar days ended and at least half as
+    many as in that side's brightest cell (fewer would bury it), brighter and thicker = more days; dashed = the 75/50/25% levels; thin white = the open and the high/low so far."""
     import matplotlib.pyplot as plt
     from matplotlib.cm import ScalarMappable
     from matplotlib.colors import Normalize
 
     plt.style.use("dark_background")
     fig, ax = plt.subplots(figsize=(10, 7))
-    bins = [b for side in ("HOD", "LOD") for b in f[side]["heat"]
-            if b[1] >= max(2, 0.5 * max(c for _, c in f[side]["heat"]))]
-    norm = Normalize(2, max([c for _, c in bins], default=3))
-    for price, count in bins:
+    cells = [cell for side in ("HOD", "LOD") for cell in f[side]["heat"]
+             if cell[1] >= max(MIN_DAYS, 0.5 * max(c for _, c in f[side]["heat"]))]
+    norm = Normalize(MIN_DAYS, max([c for _, c in cells], default=MIN_DAYS + 1))
+    for price, count in cells:
         ax.axhline(price - open_price, color=plt.cm.viridis(norm(count)), linewidth=2 + 4 * norm(count))
     for side in ("HOD", "LOD"):
         for lvl in f[side]["levels"]:
@@ -183,7 +187,7 @@ def plot_heat(f: dict, open_price: float, title: str):
     return fig
 
 
-def forecast(ex: pd.DataFrame, high_so_far: float, low_so_far: float, today_range: float,
+def forecast(ex: pd.DataFrame, high_so_far: float, low_so_far: float, today_range: float, origin: float,
              w: np.ndarray | None = None, rw: tuple[float, float] | None = None) -> dict:
     """Per side: done, levels, and line = the median final HOD/LOD over all similar days (the
     best single guess; it sits on the high/low so far once most similar days were done). rw =
@@ -194,7 +198,7 @@ def forecast(ex: pd.DataFrame, high_so_far: float, low_so_far: float, today_rang
     return {side: dict(zip(["done", "levels"], odds(ex[col].to_numpy(), now, sign, today_range, w,
                                                     None if rw is None else rw[k])),
                        line=now + sign * wquantile(ex[col].to_numpy(), w, 0.5) * today_range,
-                       heat=heat(ex[col].to_numpy(), now, sign, today_range))
+                       heat=heat(ex[col].to_numpy(), now, sign, today_range, origin))
             for side, col, now, sign, k in [("HOD", "up", high_so_far, 1, 0), ("LOD", "down", low_so_far, -1, 1)]}
 
 
@@ -218,7 +222,7 @@ def day_lines(candles: pd.DataFrame, stats: pd.DataFrame, target: date, today_ra
         high = day.Open.iloc[0] if hour is None else hi.loc[target, hour]
         low = day.Open.iloc[0] if hour is None else lo.loc[target, hour]
         out.append({"hour": hour, "high": high, "low": low, "n": int((w > 0).sum()),
-                    **forecast(ex, high, low, today_range, w,
+                    **forecast(ex, high, low, today_range, day.Open.iloc[0], w,
                                None if hour is None else [rw_done(x, hour) for x in today_near])})
     return out
 

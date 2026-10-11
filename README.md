@@ -1,9 +1,8 @@
 # Caple
 
-Small server that serves hourly ES candles from London Strategic Edge (LSE).
-
-Pick a date in the calendar and get every 1h candle that closed before it (the
-last one is the previous day 23:00 New York time) going back 729 days.
+A local web app that shows where today's ES high and low (HOD/LOD) are likely to end, and how
+likely that is. The sidebar groups the modules: HOD/LOD (Price Based, Time Based, Level
+Validator) and Bias (Seasonal, Intraday); only Price Based is built so far.
 
 All data comes from LSE (https://londonstrategicedge.com/data): ES.F 1h bars since
 mid 2016, cached to `lse_ES.F_1h.csv` (later runs only fetch new bars), and the US
@@ -21,8 +20,9 @@ Open http://localhost:5000.
 
 ## API
 
-- `GET /api/available-dates`: dates that can be picked right now.
-- `GET /api/candles?date=YYYY-MM-DD`: candles as JSON.
+- `GET /api/price-based?end=YYYY-MM-DD&at=open|0..23`: the Price Based heatmap (see below).
+- `GET /api/available-dates`: dates with 729 days of candles before them.
+- `GET /api/candles?date=YYYY-MM-DD`: every 1h candle that closed before the date, 729 days back, as JSON.
 - `GET /api/candles?date=YYYY-MM-DD&format=csv`: candles as a CSV download.
 
 ## Today's HOD/LOD, no bias needed
@@ -37,7 +37,7 @@ python levels.py 2025-01-02 open --2y   # learn only from the two years before t
 Besides the levels it prints the brightest heatmap levels as prices (where the most similar
 past days ended) and saves `hodlod.png`, a QuantiStat-style "HOD/LOD Price Based" heatmap:
 points from the 00:00 open (price on the right axis), HOD above 0, LOD below, one line per
-2-point bin, brighter and thicker = more similar days ended there (bins under half the
+1-point cell, brighter and thicker = more similar days ended there (cells under half the
 brightest are hidden); dashed = the 75/50/25% levels, thin white = the open and the high/low
 so far. The dashed levels are the calibrated forecast; a bright line alone is no better than a
 random day's (see Scorecard).
@@ -164,16 +164,17 @@ still to come, which is almost always true, so it carries no information there.
   better alone and, added to the blend, only helped at 15:00, so they were left out; adding
   range so far or realized/implied vol to the k-NN, or k=300, made it worse.
 
-## Live HOD/LOD price heatmap
+## Price Based
 
-The top of the page (`GET /api/lines?date=YYYY-MM-DD`, default the latest day) draws the
-QuantiStat "Price Based" heatmap for today: points from the 00:00 open, HOD above 0, LOD
-below, one horizontal line per 2-point bin where similar past days that went past the
-high/low so far ended (scaled to today's yardstick; bins of a single day are hidden),
-brighter and thicker = more days. The dashed white lines are the high/low so far with the
-chance it is already the final one. It is recomputed before the open and after every
-hourly candle (the forming candle counts, data refreshes every 2 minutes, the page every
-minute); the "מצב" picker replays any earlier hour of the day.
+`GET /api/price-based?end=YYYY-MM-DD&at=...` (the page's Price Based module) draws the
+heatmap for the first day after the End Date (no End Date: the latest day): points from the
+00:00 open, HOD above 0, LOD below, one line per 1-point cell (whole points from the open)
+where similar past days that went past the high/low so far ended (scaled to today's
+expected range; cells of a single day are hidden), brighter and thicker = more days. No computed
+levels are drawn; hovering shows only the points from the open. `at=open` is before the
+open, `at=H` after the H:00 candle (open and high/low so far marked), no `at` after the
+latest candle: live for today, the page refreshes every minute (data every 2 minutes). Only
+candles up to that point are used, so nothing later changes the answer.
 The page runs on LSE's history since 2016, so any date since then can be viewed, and the
 forecast uses the same history it was tested on. It only shows bars LSE has closed, so the
 hour still forming appears once LSE publishes it.
