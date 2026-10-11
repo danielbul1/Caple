@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 import app
+import quantistat
 import lse_source
 
 
@@ -107,10 +108,10 @@ def test_the_period_counts_back_from_the_end_date(monkeypatch):
     full, q = walk(400), "/api/price-based?end=2025-12-10&at=open&mode=quantistat"
     a = serve(monkeypatch, full).get(f"{q}&period=3mo").get_json()
     later = serve(monkeypatch, full, today=date(2030, 6, 1)).get(f"{q}&period=3mo").get_json()
-    window_only = full[full.index >= pd.Timestamp("2025-09-11", tz="America/New_York")]  # 3 months up to 12-10
-    b = serve(monkeypatch, window_only).get(f"{q}&period=max").get_json()
+    stats = quantistat.daily_stats(full)
+    window = [date(2025, 9, 11) <= d <= date(2025, 12, 10) for d in stats.index]  # 3 months up to 12-10
     assert a["mode"] == "quantistat" and a["period"] == "3mo"
-    assert a["cells"] == later["cells"] == b["cells"] and a["n"] == later["n"] == b["n"]
+    assert a["cells"] == later["cells"] and a["n"] == later["n"] == sum(window)
     assert serve(monkeypatch, full).get(f"{q}&period=6mo").get_json()["n"] > a["n"]
     assert serve(monkeypatch, full).get(q).get_json()["period"] == "2y"
 
@@ -123,3 +124,10 @@ def test_quantistat_mode_only_answers_before_the_open(monkeypatch):
     assert client.get(f"/api/price-based?end={END}&at=open&mode=quantistat&period=5y").status_code == 400
     assert client.get(f"/api/price-based?end={END}&at=open&mode=nope").status_code == 400
     assert client.get(f"/api/price-based?end={END}&at=open&period=5y").status_code == 200  # no Period outside the mode
+
+
+def test_quantistat_mode_uses_the_same_days_as_the_default_mode(monkeypatch):
+    client = serve(monkeypatch, walk(90))
+    default = client.get(f"/api/price-based?end={END}&at=open").get_json()
+    raw = client.get(f"/api/price-based?end={END}&at=open&mode=quantistat&period=max").get_json()
+    assert raw["n"] == default["n"]  # the warm-up days without an expected range stay out in both

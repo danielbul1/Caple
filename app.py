@@ -17,8 +17,9 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 SYMBOL = "ES.F"
 LOOKBACK_DAYS = 729
 MARKET_TZ = ZoneInfo("America/New_York")
-# QuantiStat mode's Period field: months counted back from the End Date (ytd and max have none).
-PERIODS = {"3mo": 3, "6mo": 6, "1y": 12, "2y": 24, "ytd": None, "max": None}
+# QuantiStat mode's Period field (static/index.html lists the same choices); months count back from the End Date.
+MONTHS = {"3mo": 3, "6mo": 6, "1y": 12, "2y": 24}
+PERIODS = (*MONTHS, "ytd", "max")
 
 app = Flask(__name__, static_folder="static")
 LIVE_TTL = 120
@@ -55,7 +56,7 @@ def period_start(end: date, period: str) -> date:
         return date.min
     if period == "ytd":
         return date(end.year, 1, 1)
-    return (pd.Timestamp(end) - pd.DateOffset(months=PERIODS[period])).date() + timedelta(days=1)
+    return (pd.Timestamp(end) - pd.DateOffset(months=MONTHS[period])).date() + timedelta(days=1)
 
 
 def parse_date(raw: str | None) -> date | None:
@@ -143,16 +144,18 @@ def price_based():
 
     mode=quantistat mimics QuantiStat: raw points without expected-range scaling, every day in the Period
     window (3mo/6mo/1y/2y/ytd/max, default 2y) ending on the End Date, before the open only. It
-    drops the same days as the default mode (daily_stats: no 00:00 candle, expiry weeks, roll jumps)."""
+    drops the same days as the default mode (daily_stats: no 00:00 candle, expiry weeks, roll jumps;
+    and the first days, before the expected range has enough history)."""
     from levels import MIN_DAYS, day_lines, today_yardstick, use_yardstick  # levels imports this module
     from quantistat import daily_stats
 
     raw_end, at = request.args.get("end"), request.args.get("at")
-    mode, period = request.args.get("mode", "default"), request.args.get("period", "2y")
+    mode = request.args.get("mode", "default")
+    period = request.args.get("period", "2y") if mode == "quantistat" else None  # no Period outside the mode
     end = parse_date(raw_end)
     if (raw_end and end is None) or at not in (None, "open", *map(str, range(24))):
         return jsonify({"error": "Enter the End Date as YYYY-MM-DD and the time as open or an hour from 0 to 23."}), 400
-    if mode not in ("default", "quantistat") or (mode == "quantistat" and period not in PERIODS):
+    if mode not in ("default", "quantistat") or period not in (None, *PERIODS):
         return jsonify({"error": f"Pick mode default or quantistat, and a Period from {', '.join(PERIODS)}."}), 400
     if mode == "quantistat" and at != "open":
         return jsonify({"error": "QuantiStat mode only answers before the open."}), 400
@@ -178,11 +181,12 @@ def price_based():
         return jsonify({"error": f"{target} has no {hour}:00 candle. Pick an hour that has one, or before the open."}), 404
     known = candles[(days < target) | ((days == target) & (candles.index.hour <= (hour or 0)))]
     stats = daily_stats(known)
-    if mode == "quantistat":  # a scale of 1 point leaves every distance in raw points
-        stats = stats[[d >= period_start(end, period) for d in stats.index]].assign(r5=1.0)
+    use_yardstick(stats)
+    if mode == "quantistat":  # a scale of 1 point on the same days leaves every distance in raw points
+        stats = stats[[d >= period_start(end, period) for d in stats.index]]
+        stats = stats.assign(r5=stats.r5.where(stats.r5.isna(), 1.0))
         today_range = 1.0
     else:
-        use_yardstick(stats)
         today_range = today_yardstick(stats, target)
     rows = day_lines(known, stats, target, today_range)
     row = rows[0] if hour is None else rows[-1]
@@ -193,7 +197,7 @@ def price_based():
             "date": target.isoformat(),
             "end": end.isoformat(),
             "mode": mode,
-            "period": period if mode == "quantistat" else None,
+            "period": period,
             "live": target == today_market(),
             "hours": [int(h) for h in hours],
             "hour": hour,
