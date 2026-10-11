@@ -134,7 +134,7 @@ def price_based():
     raw_end, at = request.args.get("end"), request.args.get("at")
     end = parse_date(raw_end)
     if (raw_end and end is None) or at not in (None, "open", *map(str, range(24))):
-        return jsonify({"error": "Pass end=YYYY-MM-DD and at=open or at=0..23"}), 400
+        return jsonify({"error": "Enter the End Date as YYYY-MM-DD and the time as open or an hour from 0 to 23."}), 400
     try:
         candles = live_candles()
     except Exception as exc:  # network errors, LSE refusals
@@ -143,12 +143,12 @@ def price_based():
     opens = days[candles.index.hour == 0]
     later = opens if end is None else opens[opens > end]
     if len(later) == 0:
-        return jsonify({"error": f"No day with a 00:00 candle after {end}"}), 404
+        return jsonify({"error": f"No trading day after {end} yet. Pick an earlier End Date."}), 404
     target = later.max() if end is None else later.min()
     hours = sorted(set(candles.index.hour[days == target]))
     hour = None if at == "open" else hours[-1] if at is None else int(at)
     if hour is not None and hour not in hours:
-        return jsonify({"error": f"No {hour}:00 candle on {target}"}), 404
+        return jsonify({"error": f"{target} has no {hour}:00 candle. Pick another time, or Before the open."}), 404
     known = candles[(days < target) | ((days == target) & (candles.index.hour <= (hour or 0)))]
     stats = daily_stats(known)
     use_yardstick(stats)

@@ -5,41 +5,52 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Caple</title>
 <style>
-  :root { --bg:#000; --panel:#0e0e10; --card:#16161a; --line:#2a2a30; --fg:#f2f2f7; --muted:#8e8e93; --accent:#7c5cff; --accent2:#22d3ee; }
+  :root { --bg:#000; --panel:#0e0e10; --card:#16161a; --line:#2a2a30; --fg:#f2f2f7; --muted:#8e8e93; --accent:#7c5cff; --accent2:#22d3ee;
+          --plot-bg:#0b0b0d; --plot-grid:#222; --plot-frame:#3a3a42; --plot-mark:#f2f2f7; --plot-text:#aeaeb2; }
+  html { -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
   * { box-sizing: border-box; }
   body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color:var(--fg); background:var(--bg); }
   .app { display:flex; min-height:100vh; }
-  aside { width:240px; flex:none; background:var(--panel); border-right:1px solid var(--line); padding:20px 14px; }
+  nav { width:240px; flex:none; background:var(--panel); border-right:1px solid var(--line); padding:20px 14px; }
   .logo { font-size:22px; font-weight:800; letter-spacing:.5px; margin:0 6px 24px; display:flex; align-items:center; gap:8px; }
-  .logo i { width:22px; height:22px; border-radius:6px; background:linear-gradient(135deg,var(--accent),var(--accent2)); }
+  .logo svg { width:22px; height:22px; }
   .group { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); margin:18px 6px 8px; }
-  .tile { display:block; width:100%; text-align:left; padding:10px 12px; margin-bottom:6px; border-radius:10px; border:1px solid var(--line);
+  .tile { display:block; width:100%; text-align:start; position:relative; padding:10px 12px; margin-bottom:6px; border-radius:10px; border:1px solid var(--line);
           background:var(--card); color:var(--fg); font-size:14px; cursor:pointer; }
-  .tile:hover { border-color:#3a3a42; }
-  .tile.sel { border-color:var(--accent); background:linear-gradient(135deg,#7c5cff33,#22d3ee1a); }
+  @media (hover:hover) { .tile:hover { border-color:var(--plot-frame); } }
+  .tile[aria-current="page"] { border-color:var(--accent); background:linear-gradient(135deg,#7c5cff33,#22d3ee1a); font-weight:600; }
+  .tile[aria-current="page"]::before { content:""; position:absolute; inset-inline-start:-1px; top:8px; bottom:8px; width:3px; border-radius:3px; background:var(--accent2); }
   main { flex:1; min-width:0; padding:28px 28px 40px; }
   h1 { font-size:30px; margin:0 0 6px; background:linear-gradient(90deg,var(--accent),var(--accent2)); -webkit-background-clip:text; background-clip:text; color:transparent; display:inline-block; }
   .desc { color:var(--muted); font-size:14px; margin:0 0 18px; max-width:760px; }
   .form { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; display:flex; flex-wrap:wrap; gap:14px 18px; align-items:flex-end; max-width:860px; }
   label { display:flex; flex-direction:column; gap:6px; font-size:12px; color:var(--muted); }
-  input, select { background:#0b0b0d; color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:14px; color-scheme:dark; }
+  input, select { background:var(--plot-bg); color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:14px; color-scheme:dark; }
   input:disabled { color:var(--muted); width:70px; }
   button.go { padding:10px 22px; border:0; border-radius:10px; font-weight:700; font-size:14px; color:#fff; cursor:pointer;
-              background:linear-gradient(90deg,var(--accent),var(--accent2)); }
-  .status { margin:16px 0 8px; font-size:13px; color:var(--muted); min-height:18px; }
+              background:linear-gradient(90deg,var(--accent),var(--accent2)); transition:scale 150ms ease-out; }
+  @media (prefers-reduced-motion:no-preference) { button.go:active { scale:0.96; } }
+  .status { margin:16px 0 8px; font-size:13px; color:var(--muted); min-height:18px; font-variant-numeric:tabular-nums; }
   .err { color:#ff6b6b; }
   .soon { margin-top:24px; color:var(--muted); font-size:15px; }
   .chart { position:relative; max-width:960px; }
   .chart svg { width:100%; height:auto; display:block; }
-  .chart text { font-size:11px; fill:#aeaeb2; font-variant-numeric:tabular-nums; }
+  .chart .grid { stroke:var(--plot-grid); } .chart .frame { stroke:var(--plot-frame); fill:none; } .chart .bg { fill:var(--plot-bg); }
+  .chart .mark { stroke:var(--plot-mark); } .chart text.mark { fill:var(--plot-mark); stroke:none; }
+  .chart text { font-size:11px; fill:var(--plot-text); font-variant-numeric:tabular-nums; }
   .tip { position:absolute; pointer-events:none; background:#000c; border:1px solid var(--line); border-radius:6px; padding:3px 7px; font-size:12px; display:none; font-variant-numeric:tabular-nums; }
-  @media (max-width:720px) { .app { flex-direction:column; } aside { width:auto; border-right:0; border-bottom:1px solid var(--line); } main { padding:20px 16px; } }
+  @media (max-width:720px) {
+    .app { flex-direction:column; }
+    nav { width:auto; border-right:0; border-bottom:1px solid var(--line); padding:12px 16px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+    .logo { margin:0 12px 0 0; } .group { display:none; } .tile { width:auto; margin:0; padding:8px 12px; }
+    main { padding:20px 16px; } input, select { font-size:16px; }
+  }
 </style>
 </head>
 <body>
 <div class="app">
-  <aside>
-    <div class="logo"><i></i>Caple</div>
+  <nav aria-label="Modules">
+    <div class="logo"><svg viewBox="0 0 22 22" aria-hidden="true"><rect width="22" height="22" rx="6" fill="#0b0b0d"/><rect x="4" y="5" width="14" height="2" rx="1" fill="#3b528b"/><rect x="4" y="10" width="14" height="2.5" rx="1" fill="#fde725"/><rect x="4" y="15.5" width="14" height="2" rx="1" fill="#21918c"/></svg>Caple</div>
     <div class="group">HOD/LOD</div>
     <button class="tile" data-mod="price">Price Based</button>
     <button class="tile" data-mod="time">Time Based</button>
@@ -47,7 +58,7 @@
     <div class="group">Bias</div>
     <button class="tile" data-mod="seasonal">Seasonal</button>
     <button class="tile" data-mod="intraday">Intraday</button>
-  </aside>
+  </nav>
   <main>
     <h1 id="title"></h1>
     <p class="desc" id="desc"></p>
@@ -70,10 +81,11 @@ let timer = null;
 
 function show(mod) {
   clearTimeout(timer);
-  document.querySelectorAll(".tile").forEach(t => t.classList.toggle("sel", t.dataset.mod === mod));
+  document.querySelectorAll(".tile").forEach(t => t.removeAttribute("aria-current"));
+  document.querySelector(`.tile[data-mod="${mod}"]`).setAttribute("aria-current", "page");
   [document.getElementById("title").textContent, document.getElementById("desc").textContent] = MODULES[mod];
   const body = document.getElementById("body");
-  if (mod !== "price") { body.innerHTML = `<div class="soon">Coming soon.</div>`; return; }
+  if (mod !== "price") { body.innerHTML = `<div class="soon">${MODULES[mod][0]} is coming soon. Price Based is ready now.</div>`; return; }
   const hours = Array.from({ length: 24 }, (_, h) => `<option value="${h}">After the ${h}:00 candle</option>`).join("");
   body.innerHTML = `
     <div class="form">
@@ -82,7 +94,7 @@ function show(mod) {
       <label>Time<select id="at"><option value="">Latest candle (live today)</option><option value="open">Before the open</option>${hours}</select></label>
       <button class="go" id="go">Visualize</button>
     </div>
-    <div class="status" id="status"></div>
+    <div class="status" id="status" role="status"></div>
     <div class="chart" id="chart"></div>`;
   document.getElementById("go").onclick = visualize;
   visualize();
@@ -118,23 +130,26 @@ function draw(data) {
   const step = [5, 10, 20, 25, 50, 100, 200].find(s => (hi - lo) / s <= 10);
   const ticks = [];
   for (let d = Math.ceil(lo / step) * step; d <= hi; d += step) ticks.push(d);
-  const grid = ticks.map(d => `<line x1="${L}" x2="${W - R}" y1="${y(d)}" y2="${y(d)}" stroke="#222"/>
+  const grid = ticks.map(d => `<line x1="${L}" x2="${W - R}" y1="${y(d)}" y2="${y(d)}" class="grid"/>
     <text x="${L - 8}" y="${y(d) + 4}" text-anchor="end">${d}</text>`).join("");
   // Dim cells first so bright ones sit on top; each cell is one point tall at most, thicker = more days.
   const cell = (H - T - B) / (hi - lo);
   const cells = data.cells.slice().sort((a, b) => a.days - b.days).map(c =>
     `<line x1="${L}" x2="${W - R}" y1="${y(c.points)}" y2="${y(c.points)}" stroke="${viridis(t(c.days))}" stroke-width="${Math.min(cell, 1 + 3 * t(c.days))}"/>`).join("");
-  const mark = (d, label, dash) => `<line x1="${L}" x2="${W - R}" y1="${y(d)}" y2="${y(d)}" stroke="#f2f2f7" stroke-width="1" ${dash ? 'stroke-dasharray="6 4"' : ""}/>
-    <text x="${L + 6}" y="${y(d) - 5}" style="fill:#f2f2f7">${label}</text>`;
+  const mark = (d, label, dash) => `<line class="mark" x1="${L}" x2="${W - R}" y1="${y(d)}" y2="${y(d)}" ${dash ? 'stroke-dasharray="6 4"' : ""}/>
+    <text class="mark" x="${L + 6}" y="${y(d) - 5}">${label}</text>`;
   const marks = during ? mark(0, `open ${fmt(data.open)}`) + mark(high, `high so far ${fmt(data.high)}`, true) + mark(low, `low so far ${fmt(data.low)}`, true) : "";
   const barH = (H - T - B) / VIRIDIS.length;
   const bar = VIRIDIS.map((col, k) => `<rect x="${W - R + 24}" y="${T + barH * (VIRIDIS.length - 1 - k)}" width="14" height="${barH}" fill="${col}"/>`).join("") +
     `<text x="${W - R + 44}" y="${T + 10}">${most}</text><text x="${W - R + 44}" y="${H - B}">${least}</text>
      <text transform="translate(${W - R + 80},${(T + H - B) / 2}) rotate(90)" text-anchor="middle">days</text>`;
+  const top = side => data.cells.filter(c => c.side === side).sort((a, b) => b.days - a.days)[0];
+  const label = `Heatmap of ${data.n} similar days. Most days ended at ` +
+    ["HOD", "LOD"].map(s => top(s) ? `${s} ${top(s).points > 0 ? "+" : ""}${top(s).points} points (${top(s).days} days)` : `no ${s} cell`).join(" and ") + " from the open.";
   const chart = document.getElementById("chart");
-  chart.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="HOD/LOD price based heatmap">
-    <rect width="${W}" height="${H}" fill="#0b0b0d" rx="10"/>${grid}
-    <rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="none" stroke="#3a3a42"/>${cells}${marks}
+  chart.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${label}">
+    <rect class="bg" width="${W}" height="${H}" rx="10"/>${grid}
+    <rect class="frame" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}"/>${cells}${marks}
     <text transform="translate(14,${(T + H - B) / 2}) rotate(-90)" text-anchor="middle">points from the 00:00 open</text>${bar}
     <rect id="hover" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/></svg><div class="tip" id="tip"></div>`;
   const svg = chart.querySelector("svg"), tip = document.getElementById("tip");
